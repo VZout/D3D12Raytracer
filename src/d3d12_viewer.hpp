@@ -24,6 +24,7 @@ class D3D12Viewer : public Viewer
 	friend class D3D12RayTracer;
 
 	using VertexBuffer = std::tuple<ComPtr<ID3D12Resource>, ComPtr<ID3D12Resource>, D3D12_VERTEX_BUFFER_VIEW>;
+
 public:
 	explicit D3D12Viewer(Application& app);
 	~D3D12Viewer() override;
@@ -33,6 +34,7 @@ public:
 
 	static const D3D_FEATURE_LEVEL m_feature_level = D3D_FEATURE_LEVEL_11_0;
 	static const DXGI_FORMAT m_back_buffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	const std::string m_shader_model = "_5_0";
 	static const bool disable_gpu_timeout = false;
 	static const std::uint8_t num_back_buffers = 2;
 	static const bool use_vsync = false;
