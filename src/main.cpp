@@ -13,14 +13,16 @@
 float rt_viewport_size = 1;
 float rt_z_near = 1;
 float rt_epsilon = 0.08;
-fm::vec2 rt_canvas_size = { 600, 600 };
+fm::vec2 rt_canvas_size;
 fm::vec3 rt_camera_pos = { 0, 0, -3 };
 fm::vec3 rt_sky_color = { 190.f / 255.f, 240.f / 255.f, 1 };
 bool rt_use_cpu = false;
 
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 {
-	auto app = std::make_unique<Application>(instance, cmd_show, "Raytracer", 600, 600);
+	auto app = std::make_unique<Application>(instance, cmd_show, "Raytracer", 720, 720);
+
+	rt_canvas_size = { (float)app->GetWidth(), (float)app->GetHeight() };
 	
 	app->SetKeyCallback([&app](int key, int, int)
 	{

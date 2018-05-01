@@ -13,7 +13,7 @@ D3D12Viewer::D3D12Viewer(Application& app) : Viewer(app)
 {
 	SetupD3D12();
 	SetupImGui();
-	SetupSwapChain(600, 600);
+	SetupSwapChain(app.GetWidth(), app.GetHeight());
 
 	m_cmd_allocators = CreateCommandAllocators<num_back_buffers>();
 	m_cmd_list = CreateGraphicsCommandList(m_cmd_allocators[m_frame_idx]);
@@ -27,7 +27,7 @@ D3D12Viewer::D3D12Viewer(Application& app) : Viewer(app)
 	CreateRTVsFromResourceArray(m_render_targets,(CD3DX12_CPU_DESCRIPTOR_HANDLE)m_render_target_view_heap->GetCPUDescriptorHandleForHeapStart());
 
 	// Create Viewport and sciccor rect.
-	m_viewport = CreateViewportAndRect(600, 600);
+	m_viewport = CreateViewportAndRect(app.GetWidth(), app.GetHeight());
 
 	// Create the basic pipeline and root signature.
 	m_root_signature = CreateBasicRootSignature();

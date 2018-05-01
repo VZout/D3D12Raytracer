@@ -36,6 +36,10 @@ public:
 
 	/*! Returns whether the application is running. (used for the main loop) */
 	bool IsRunning() const;
+	/* Returns the client width */
+	int GetWidth() const;
+	/* Returns the client height */
+	int GetHeight() const;
 	/*! Returns the native window handle (HWND)*/
 	HWND GetWindowHandle() const;
 

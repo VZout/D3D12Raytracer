@@ -110,6 +110,20 @@ bool Application::IsRunning() const
 	return m_running;
 }
 
+int Application::GetWidth() const
+{
+	RECT r;
+	GetClientRect(m_handle, &r);
+	return r.right - r.left;
+}
+
+int Application::GetHeight() const
+{
+	RECT r;
+	GetClientRect(m_handle, &r);
+	return r.bottom - r.top;
+}
+
 HWND Application::GetWindowHandle() const
 {
 	return m_handle;
