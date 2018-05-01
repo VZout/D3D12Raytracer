@@ -93,6 +93,7 @@ void ImGui_ImplDX12_RenderDrawData(ImDrawData* draw_data)
         if (g_pd3dDevice->CreateCommittedResource(&props, D3D12_HEAP_FLAG_NONE,
             &desc, D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(&g_pVB)) < 0)
             return;
+		g_pVB->SetName(L"ImGui Vertex Buffer");
         frameResources->VB = g_pVB;
         frameResources->VertexBufferSize = g_VertexBufferSize;
     }
@@ -119,6 +120,7 @@ void ImGui_ImplDX12_RenderDrawData(ImDrawData* draw_data)
         if (g_pd3dDevice->CreateCommittedResource(&props, D3D12_HEAP_FLAG_NONE,
             &desc, D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(&g_pIB)) < 0)
             return;
+		g_pVB->SetName(L"ImGui Index Buffer");
         frameResources->IB = g_pIB;
         frameResources->IndexBufferSize = g_IndexBufferSize;
     }
@@ -365,6 +367,7 @@ static void ImGui_ImplDX12_CreateFontsTexture()
         ID3D12Resource* pTexture = NULL;
         g_pd3dDevice->CreateCommittedResource(&props, D3D12_HEAP_FLAG_NONE, &desc,
             D3D12_RESOURCE_STATE_COPY_DEST, NULL, IID_PPV_ARGS(&pTexture));
+		pTexture->SetName(L"ImGui Font Texture");
 
         UINT uploadPitch = (width * 4 + D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1u) & ~(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1u);
         UINT uploadSize = height * uploadPitch;
@@ -388,6 +391,7 @@ static void ImGui_ImplDX12_CreateFontsTexture()
         HRESULT hr = g_pd3dDevice->CreateCommittedResource(&props, D3D12_HEAP_FLAG_NONE, &desc,
             D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(&uploadBuffer));
         IM_ASSERT(SUCCEEDED(hr));
+		uploadBuffer->SetName(L"ImGui Font Texture Upload Heap");
 
         void* mapped = NULL;
         D3D12_RANGE range = { 0, uploadSize };
@@ -422,6 +426,7 @@ static void ImGui_ImplDX12_CreateFontsTexture()
         ID3D12Fence* fence = NULL;
         hr = g_pd3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
         IM_ASSERT(SUCCEEDED(hr));
+		fence->SetName(L"ImGui Fence");
 
         HANDLE event = CreateEvent(0, 0, 0, 0);
         IM_ASSERT(event != NULL);
@@ -434,14 +439,17 @@ static void ImGui_ImplDX12_CreateFontsTexture()
         ID3D12CommandQueue* cmdQueue = NULL;
         hr = g_pd3dDevice->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&cmdQueue));
         IM_ASSERT(SUCCEEDED(hr));
+		cmdQueue->SetName(L"ImGui Direct Command Queue");
 
         ID3D12CommandAllocator* cmdAlloc = NULL;
         hr = g_pd3dDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&cmdAlloc));
         IM_ASSERT(SUCCEEDED(hr));
+		cmdAlloc->SetName(L"ImGui Command Allocator");
 
         ID3D12GraphicsCommandList* cmdList = NULL;
         hr = g_pd3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, cmdAlloc, NULL, IID_PPV_ARGS(&cmdList));
         IM_ASSERT(SUCCEEDED(hr));
+		cmdList->SetName(L"ImGui Command List");
 
         cmdList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, NULL);
         cmdList->ResourceBarrier(1, &barrier);
@@ -542,6 +550,7 @@ bool    ImGui_ImplDX12_CreateDeviceObjects()
             return false;
 
         g_pd3dDevice->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&g_pRootSignature));
+		g_pRootSignature->SetName(L"ImGui Root Signature");
         blob->Release();
     }
 
@@ -674,6 +683,7 @@ bool    ImGui_ImplDX12_CreateDeviceObjects()
 
     if (g_pd3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&g_pPipelineState)) != S_OK)
         return false;
+	g_pPipelineState->SetName(L"ImGui Pipeline State");
 
     ImGui_ImplDX12_CreateFontsTexture();
 

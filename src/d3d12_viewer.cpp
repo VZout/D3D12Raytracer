@@ -16,9 +16,8 @@ D3D12Viewer::D3D12Viewer(Application& app) : Viewer(app)
 	m_cmd_allocators = CreateCommandAllocators<num_back_buffers>();
 	m_cmd_list = CreateGraphicsCommandList(m_cmd_allocators[m_frame_idx]);
 
-	// Create fence and Signal so we can make sure our data uploaded during initialization is done.
+	// Create fence
 	fence = new FenceObject(*this, num_back_buffers);
-	fence->Signal(m_cmd_queue, m_frame_idx);
 
 	// Get Back buffers and create SRV's to them.
 	m_render_targets = GetRenderTargetsFromSwapChain<num_back_buffers>(m_swap_chain);
@@ -27,6 +26,32 @@ D3D12Viewer::D3D12Viewer(Application& app) : Viewer(app)
 
 	// Create Viewport and sciccor rect.
 	m_viewport = CreateViewportAndRect(600, 600);
+
+	// Create the basic pipeline and root signature.
+	m_root_signature = CreateBasicRootSignature();
+	m_pipeline = CreateBasicPipelineState(m_root_signature);
+
+	// Create Shader resource view heap to store the raytraced texture.
+	m_main_srv_desc_heap = CreateSRVHeap(1);
+
+	// Create Screen Squad Vertex Buffer;
+	std::vector<fm::vec3> vertices =
+	{
+		{ -1.f, -1.f, 0.f },
+		{ 1.f, -1.f, 0.f },
+		{ -1.f, 1.f, 0.f },
+		{ 1.f, 1.f, 0.f }
+	};
+
+	screen_quad_vb = CreateVertexBuffer(vertices);
+
+	// Execute cmd list so VB is uploaded
+	m_cmd_list->Close();
+	ID3D12CommandList* cmd_lists[1] = { m_cmd_list.Get() };
+	m_cmd_queue->ExecuteCommandLists(1, cmd_lists);
+
+	// Synchronize with GPU to make sure VB is uploaded
+	fence->Signal(m_cmd_queue, m_frame_idx);
 }
 
 D3D12Viewer::~D3D12Viewer()
@@ -35,11 +60,19 @@ D3D12Viewer::~D3D12Viewer()
 	fence->Wait(1);
 }
 
+bool first = true;
+#include "d3d12_ray_tracer.hpp"
 void D3D12Viewer::NewFrame()
 {
 	// Wait for command list to be available.
 	fence->Wait(m_frame_idx);
 	fence->Increment(m_frame_idx);
+
+	if (first)
+	{
+		//GET_VB_UPLOAD_RESOURCE(screen_quad_vb)();
+		first = false;
+	}
 
 	// Reset command allocator
 	auto hr = m_cmd_allocators[m_frame_idx]->Reset();
@@ -67,30 +100,27 @@ void D3D12Viewer::NewFrame()
 	m_cmd_list->ClearRenderTargetView(rtv_handle, m_clear_color, 0, nullptr);
 	m_cmd_list->OMSetRenderTargets(1, &rtv_handle, false, nullptr);
 	
-	//m_cmd_list->RSSetViewports(1, &m_viewport.first); // set the viewports
-	//m_cmd_list->RSSetScissorRects(1, &m_viewport.second); // set the scissor rects
+	m_cmd_list->RSSetViewports(1, &m_viewport.first); // set the viewports
+	m_cmd_list->RSSetScissorRects(1, &m_viewport.second); // set the scissor rects
 
-	/*
-	cmd_list->SetPipelineState(pipeline);
-	cmd_list->SetGraphicsRootSignature(root_signature);
+	
+	m_cmd_list->SetPipelineState(m_pipeline.Get());
+	m_cmd_list->SetGraphicsRootSignature(m_root_signature.Get());
 
-	cmd_list->SetDescriptorHeaps(1, &main_srv_desc_heap);
+	auto teamp_heap = m_main_srv_desc_heap.Get();
+	m_cmd_list->SetDescriptorHeaps(1, &teamp_heap);
 
-	cmd_list->SetGraphicsRootConstantBufferView(0, const_buffers[frame_idx]->GetGPUVirtualAddress());
-	cmd_list->SetGraphicsRootDescriptorTable(1, main_srv_desc_heap->GetGPUDescriptorHandleForHeapStart());
+	//m_cmd_list->SetGraphicsRootDescriptorTable(1, m_main_srv_desc_heap->GetGPUDescriptorHandleForHeapStart());
 
-	cmd_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	cmd_list->IASetVertexBuffers(0, 1, &vertex_buffer_view);
-	cmd_list->IASetIndexBuffer(&index_buffer_view);
-	cmd_list->DrawIndexedInstanced(6, 1, 0, 0, 0);
-	*/
+	m_cmd_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+	m_cmd_list->IASetVertexBuffers(0, 1, &GET_VB_VIEW(screen_quad_vb));
 }
 
 void D3D12Viewer::Present()
 {
 	// Render ImGui.
-	auto a = imgui_descriptor_heap.Get();
-	m_cmd_list->SetDescriptorHeaps(1, &a);
+	auto teamp_heap = imgui_descriptor_heap.Get();
+	m_cmd_list->SetDescriptorHeaps(1, &teamp_heap);
 	ImGui::Render();
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData());
 
@@ -121,7 +151,7 @@ void D3D12Viewer::SetupD3D12()
 	// Setup debug layer
 	if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug_controller))))
 	{
-		debug_controller->SetEnableGPUBasedValidation(true);
+		//debug_controller->SetEnableGPUBasedValidation(true);
 		debug_controller->EnableDebugLayer();
 	}
 #endif
@@ -288,6 +318,116 @@ void D3D12Viewer::CreateDevice()
 	}
 }
 
+ComPtr<ID3D12PipelineState> D3D12Viewer::CreateBasicPipelineState(ComPtr<ID3D12RootSignature>& root_signature)
+{
+	ComPtr<ID3D12PipelineState> pipeline;
+
+	D3D12_BLEND_DESC blend_desc = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+
+	D3D12_DEPTH_STENCIL_DESC depth_stencil_state = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+
+	D3D12_RASTERIZER_DESC rasterize_desc = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+
+	rasterize_desc.FrontCounterClockwise = true;
+	DXGI_SAMPLE_DESC sampleDesc = { 1, 0 };
+
+	std::vector<D3D12_INPUT_ELEMENT_DESC> input_layout = {
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+	};
+
+	D3D12_INPUT_LAYOUT_DESC input_layout_desc = {};
+	input_layout_desc.NumElements = input_layout.size();
+	input_layout_desc.pInputElementDescs = input_layout.data();
+
+	auto vertex_shader = LoadShader("rt_vertex.hlsl", "main", "vs_5_0");
+	auto pixel_shader = LoadShader("rt_pixel.hlsl", "main", "ps_5_0");
+
+	if (std::holds_alternative<std::string>(vertex_shader))
+	{
+		auto msg = std::get<std::string>(vertex_shader);
+		MessageBox(nullptr, TEXT((char*)msg.c_str()), NULL, MB_OK | MB_ICONERROR);
+	}
+
+	if (std::holds_alternative<std::string>(pixel_shader))
+	{
+		auto msg = std::get<std::string>(pixel_shader);
+		MessageBox(nullptr, TEXT((char*)msg.c_str()), NULL, MB_OK | MB_ICONERROR);
+	}
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
+	pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	pso_desc.SampleDesc = sampleDesc;
+	pso_desc.SampleMask = 0xffffffff;
+	pso_desc.RasterizerState = rasterize_desc;
+	pso_desc.BlendState = blend_desc;
+	pso_desc.NumRenderTargets = 1;
+	pso_desc.pRootSignature = root_signature.Get();
+	pso_desc.VS = std::get<std::pair<ID3DBlob*, D3D12_SHADER_BYTECODE>>(vertex_shader).second;
+	pso_desc.PS = std::get<std::pair<ID3DBlob*, D3D12_SHADER_BYTECODE>>(pixel_shader).second;
+	pso_desc.InputLayout = input_layout_desc;
+
+	HRESULT hr = m_device->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&pipeline));
+	if (FAILED(hr))
+	{
+		throw "Failed to create graphics pipeline";
+	}
+	pipeline->SetName(L"Raytracing pipeline object");
+
+	return pipeline;
+}
+
+ComPtr<ID3D12RootSignature> D3D12Viewer::CreateBasicRootSignature()
+{
+	ComPtr<ID3D12RootSignature> root_signature;
+
+	std::array<D3D12_STATIC_SAMPLER_DESC, 1> samplers;
+	samplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+	samplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+	samplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+	samplers[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+	samplers[0].MipLODBias = 0;
+	samplers[0].MaxAnisotropy = 0;
+	samplers[0].ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+	samplers[0].BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
+	samplers[0].MinLOD = 0.0f;
+	samplers[0].MaxLOD = D3D12_FLOAT32_MAX;
+	samplers[0].ShaderRegister = 0;
+	samplers[0].RegisterSpace = 0;
+	samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	CD3DX12_DESCRIPTOR_RANGE desc_range;
+	desc_range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+
+	std::array<CD3DX12_ROOT_PARAMETER, 1> parameters;
+	parameters[0].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+	//parameters[1].InitAsDescriptorTable(1, &desc_range, D3D12_SHADER_VISIBILITY_PIXEL);
+
+	CD3DX12_ROOT_SIGNATURE_DESC root_signature_desc;
+	root_signature_desc.Init(parameters.size(),
+		parameters.data(),
+		samplers.size(),
+		samplers.data(),
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+	ID3DBlob* signature;
+	ID3DBlob* error = nullptr;
+	auto hr = D3D12SerializeRootSignature(&root_signature_desc, D3D_ROOT_SIGNATURE_VERSION_1_0, &signature, &error); //TODO: FIX error parameter
+	if (FAILED(hr))
+	{
+		throw std::runtime_error("Failed to create a serialized root signature");
+	}
+
+	hr = m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&root_signature));
+	if (FAILED(hr))
+	{
+		throw std::runtime_error("Failed to create root signature");
+	}
+	NAME_D3D12RESOURCE(root_signature, L"Basic root signature");
+
+	return root_signature;
+}
+
 ComPtr<ID3D12GraphicsCommandList2> D3D12Viewer::CreateGraphicsCommandList(ComPtr<ID3D12CommandAllocator>& allocator)
 {
 	ComPtr<ID3D12GraphicsCommandList2> cmd_list;
@@ -305,7 +445,6 @@ ComPtr<ID3D12GraphicsCommandList2> D3D12Viewer::CreateGraphicsCommandList(ComPtr
 		throw std::runtime_error("Failed to create command list");
 	}
 	NAME_D3D12RESOURCE(cmd_list, L"Command list");
-	cmd_list->Close();
 
 	return cmd_list;
 }
@@ -401,4 +540,71 @@ std::pair<D3D12_VIEWPORT, D3D12_RECT> D3D12Viewer::CreateViewportAndRect(std::ui
 	scissor_rect.bottom = height;
 
 	return {viewport, scissor_rect };
+}
+
+inline std::wstring D3D12Viewer::GetUTF16(std::string_view const str, int codepage)
+{
+	if (str.empty()) return std::wstring();
+	int sz = MultiByteToWideChar(codepage, 0, &str[0], (int)str.size(), 0, 0);
+	std::wstring retval(sz, 0);
+	MultiByteToWideChar(codepage, 0, &str[0], (int)str.size(), &retval[0], sz);
+	return retval;
+}
+
+ComPtr<ID3D12DescriptorHeap> D3D12Viewer::CreateSRVHeap(std::uint8_t num)
+{
+	ComPtr<ID3D12DescriptorHeap> heap;
+
+	D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
+	heap_desc.NumDescriptors = num;
+	heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	HRESULT hr = m_device->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(&heap));
+	NAME_D3D12RESOURCE(heap, L"SRV Heap")
+
+	return heap;
+}
+
+D3D12Viewer::VertexBuffer D3D12Viewer::CreateVertexBuffer(std::vector<fm::vec3> vertices)
+{
+	auto vertex_buffer_size = vertices.size() * sizeof(decltype(vertices[0]));
+	ComPtr<ID3D12Resource> buffer;
+	ComPtr<ID3D12Resource> staging_buffer;
+	D3D12_VERTEX_BUFFER_VIEW vertex_buffer_view;
+
+	m_device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(vertex_buffer_size),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(&buffer));
+	buffer->SetName(L"Vertex Buffer Resource Heap");
+
+	m_device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(vertex_buffer_size),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&staging_buffer));
+	staging_buffer->SetName(L"Vertex Buffer Upload Resource Heap");
+
+	// store vertex buffer in upload heap
+	D3D12_SUBRESOURCE_DATA vertex_data = {};
+	vertex_data.pData = reinterpret_cast<BYTE*>(vertices.data());
+	vertex_data.RowPitch = vertex_buffer_size;
+	vertex_data.SlicePitch = vertex_buffer_size;
+
+	UpdateSubresources(m_cmd_list.Get(), buffer.Get(), staging_buffer.Get(), 0, 0, 1, &vertex_data);
+
+	// transition the vertex buffer data from copy destination state to vertex buffer state
+	m_cmd_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(buffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
+
+	// create a vertex buffer view for the rectangle. We get the GPU memory address to the vertex buffer using the GetGPUVirtualAddress() method
+	vertex_buffer_view.BufferLocation = buffer->GetGPUVirtualAddress();
+	vertex_buffer_view.StrideInBytes = sizeof(decltype(vertices[0]));
+	vertex_buffer_view.SizeInBytes = vertex_buffer_size;
+
+	return { buffer, staging_buffer, vertex_buffer_view };
 }

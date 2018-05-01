@@ -8,6 +8,14 @@
 #include "d3d12_ray_tracer.hpp"
 #include "imgui\imgui.h"
 
+float rt_viewport_size = 1;
+float rt_z_near = 1;
+float rt_epsilon = 0.08;
+float rt_canvas_size[2] = { 600, 600 };
+float rt_camera_pos[3] = { 0, 0, -3 };
+fm::vec3 rt_sky_color = { 190.f / 255.f, 240.f / 255.f, 1 };
+bool rt_use_cpu = false;
+
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 {
 	auto app = std::make_unique<Application>(instance, cmd_show, "Raytracer", 600, 600);
@@ -59,15 +67,33 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 		viewer->NewFrame();
 
 		// ImGui
-		/*
 		ImGui::Begin("Raytracer Properties", &imgui_show_properties);
 		ImGui::Text("Framerate: %d", fps);
 		ImGui::Text("CPU Frametime: %f (Mu)", cpu_frame_time);
 		ImGui::Separator();
+		ImGui::PushItemWidth(100);
+		ImGui::DragFloat("Projection Near", &rt_z_near, 0.01f, 0);
+		ImGui::DragFloat("Epsilon", &rt_epsilon, 0.01f, 0);
+		ImGui::DragFloat("Viewport Size", &rt_viewport_size, 0.01f, 0);
+		ImGui::DragFloat2("Canvas Size", rt_canvas_size);
+		ImGui::Checkbox("Use CPU", &rt_use_cpu);
+		ImGui::PopItemWidth();
+		ImGui::Separator();
+		ImGui::DragFloat3("Camera Position", rt_camera_pos, 0.1f);
+		ImGui::ColorEdit3("SkyColor", rt_sky_color.data);
 		ImGui::End();
-		*/
 
-		ray_tracer->TracePixel(0, 0);
+		RTProperties properties;
+		properties.z_near = rt_z_near;
+		properties.canvas_size = { rt_canvas_size[0], rt_canvas_size[1] };
+		properties.viewport_size = rt_viewport_size;
+		properties.epsilon = rt_epsilon;
+		properties.camera_pos = { rt_camera_pos[0], rt_camera_pos[1], rt_camera_pos[2] };
+		properties.use_cpu = rt_use_cpu;
+		properties.sky_color = rt_sky_color;
+
+		ray_tracer->UpdateSettings(viewer.get(), properties);
+		ray_tracer->TracePixel(viewer.get(), 0, 0);
 
 		viewer->Present();
 	}
