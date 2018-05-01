@@ -4,8 +4,10 @@
 #include <string>
 #include <stdexcept>
 
+#ifdef ENABLE_IMGUI
 #include "imgui\imgui.h"
 #include "imgui\imgui_impl_dx12.h"
+#endif
 
 Application::Application(HINSTANCE instance, int cmd_show, std::string const& name, const unsigned int width, const unsigned int height)
 {
@@ -127,8 +129,10 @@ constexpr unsigned char PercentageToAlpha(int percentage)
 
 LRESULT CALLBACK Application::WindowProc_Impl(HWND handle, UINT msg, WPARAM w_param, LPARAM l_param)
 {
+#ifdef ENABLE_IMGUI
 	if (ImGui_ImplWin32_WndProcHandler(handle, msg, w_param, l_param))
 		return true;
+#endif
 
 	switch (msg)
 	{

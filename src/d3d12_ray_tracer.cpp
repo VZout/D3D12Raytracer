@@ -38,7 +38,7 @@ void D3D12RayTracer::UpdateSettings(Viewer* viewer, RTProperties properties)
 {
 	auto d3d12_viewer = static_cast<D3D12Viewer*>(viewer);
 
-	memcpy(GET_CB_ADRESS(m_const_buffer, d3d12_viewer->m_frame_idx), &properties, sizeof(RTProperties));
+	memcpy(GET_CB_ADDRESS(m_const_buffer, d3d12_viewer->m_frame_idx), &properties, sizeof(RTProperties));
 
 	m_properties = properties;
 }

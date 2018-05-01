@@ -359,7 +359,7 @@ float4 PixelTrace(Input input)
 	pixel_pos.y *= -1;
 #endif
 
-	float pixel_size = 0.25;
+	/*float pixel_size = 0.25;
 	float3 dir0 = CanvasToViewport(pixel_pos - float2(-pixel_size, -pixel_size));
 	float3 dir1 = CanvasToViewport(pixel_pos - float2(-pixel_size, pixel_size));
 	float3 dir2 = CanvasToViewport(pixel_pos - float2(pixel_size, -pixel_size));
@@ -369,10 +369,10 @@ float4 PixelTrace(Input input)
 	float3 color1 = TraceRay(camera_pos, dir1, z_near, inf, REFLECTION_RECURSION);
 	float3 color2 = TraceRay(camera_pos, dir2, z_near, inf, REFLECTION_RECURSION);
 	float3 color3 = TraceRay(camera_pos, dir3, z_near, inf, REFLECTION_RECURSION);
-	float3 color = (color0 + color1 + color2 + color3) / 4;
+	float3 color = (color0 + color1 + color2 + color3) / 4;*/
 	
-	//float3 dir = CanvasToViewport(pixel_pos);
-	//float3 color = TraceRay(camera_pos, dir, z_near, inf, REFLECTION_RECURSION);
+	float3 dir = CanvasToViewport(pixel_pos);
+	float3 color = TraceRay(camera_pos, dir, z_near, inf, REFLECTION_RECURSION);
 
 #ifdef GPU
 	//if (use_cpu)

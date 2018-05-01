@@ -31,6 +31,7 @@ public:
 	RayTracer(RayTracer&&) = delete;
 	RayTracer& operator=(RayTracer&&) = delete;
 
+	/*! Initializes the ray tracer (Called by the viewer by `Viewer::SetRayTracer`) */
 	virtual void Initialize(Viewer* viewer) = 0;
 
 	/*! Traces a single pixel and saves it to `m_texture`. */
@@ -52,4 +53,3 @@ protected:
 	Texture* m_texture;
 	RTProperties m_properties;
 };
-

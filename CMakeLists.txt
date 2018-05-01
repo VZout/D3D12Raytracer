@@ -8,6 +8,8 @@ else()
 	add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+add_definitions(-DENABLE_IMGUI)
+
 SET(D3D12_LIBS d3d12.lib dxgi.lib d3dcompiler.lib)
 
 set(HEADERS

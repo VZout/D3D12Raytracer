@@ -44,7 +44,9 @@ private:
 	ComPtr<IDXGIAdapter4> m_adapter;
 	ComPtr<IDXGISwapChain4> m_swap_chain;
 	ComPtr<ID3D12CommandQueue> m_cmd_queue;
+#ifdef ENABLE_IMGUI
 	ComPtr<ID3D12DescriptorHeap> imgui_descriptor_heap;
+#endif
 	std::array<ComPtr<ID3D12Resource>, num_back_buffers> m_render_targets;
 	ComPtr<ID3D12DescriptorHeap> m_render_target_view_heap;
 	ComPtr<ID3D12PipelineState> m_pipeline;
@@ -77,7 +79,11 @@ private:
 	void FindCompatibleAdapter();
 	void CreateDevice();
 
+	/*! Returns a basic root signature to render the ray tracer's output on a screen quad */
 	[[nodiscard]] ComPtr<ID3D12RootSignature> CreateBasicRootSignature();
+	/*! Returns a basic pipeline state for rendering a screen  quad
+	 * @param root_signature The root signature return by `D3D12Viewer::CreateBasicRootSignature`.
+	 */
 	[[nodiscard]] ComPtr<ID3D12PipelineState> CreateBasicPipelineState(ComPtr<ID3D12RootSignature>& root_signature);
 
 	template<unsigned int N>
@@ -102,60 +108,19 @@ private:
 
 struct FenceObject
 {
-	FenceObject(D3D12Viewer& viewer, const std::uint8_t num)
-	{
-		HRESULT hr;
+	/*! Creates fence resources, fence values and a fence event.
+	 *
+	 * @param viewer The owning Viewer.
+	 * @param num Amount of fence values.
+	 */
+	FenceObject(D3D12Viewer& viewer, const std::uint8_t num);
 
-		fences = new ComPtr<ID3D12Fence>[num];
-		fence_values = new UINT64[num];
-
-		// create the fences
-		for (std::uint8_t i = 0; i < num; i++)
-		{
-			hr = viewer.m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fences[i]));
-			if (FAILED(hr))
-			{
-				throw std::runtime_error("Failed to create fence.");
-			}
-			fence_values[i] = 0; // set the initial fence value to 0
-		}
-
-		// create a handle to a fence event
-		fence_event = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-		if (fence_event == nullptr)
-		{
-			throw std::runtime_error("Failed to create fence event.");
-		}
-	}
-
-	inline void Increment(std::uint8_t idx)
-	{
-		fence_values[idx]++;
-	}
-
-	inline void Signal(ComPtr<ID3D12CommandQueue> queue, std::uint8_t idx)
-	{
-		auto hr = queue->Signal(fences[idx].Get(), fence_values[idx]);
-		if (FAILED(hr))
-		{
-			throw std::runtime_error("Failed to signal command queue.");
-		}
-	}
-
-	inline void Wait(const std::uint8_t idx)
-	{
-		if (fences[idx]->GetCompletedValue() < fence_values[idx])
-		{
-			// we have the fence create an event which is signaled once the fence's current value is "fenceValue"
-			auto hr = fences[idx]->SetEventOnCompletion(fence_values[idx], fence_event);
-			if (FAILED(hr))
-			{
-				throw std::runtime_error("Failed to set fence event.");
-			}
-
-			WaitForSingleObject(fence_event, INFINITE);
-		}
-	}
+	/*! Increments the fence value corresponding to the index. */
+	inline void Increment(std::uint8_t idx);
+	/*! Signal a command queue. */
+	inline void Signal(ComPtr<ID3D12CommandQueue> queue, std::uint8_t idx);
+	/*! Wait for the fence value corresponding to the index to unblock. */
+	inline void Wait(const std::uint8_t idx);
 
 	ComPtr<ID3D12Fence>* fences;
 	HANDLE fence_event;
@@ -167,7 +132,8 @@ struct FenceObject
  * @param n The name as wstring.
  */
 #ifdef _DEBUG
-#define NAME_D3D12RESOURCE(r, n) auto temp = std::string(__FILE__); r->SetName(std::wstring(std::wstring(n) + L" (line: " + std::to_wstring(__LINE__) + L" file: " + std::wstring(temp.begin(), temp.end())).c_str());
+#define NAME_D3D12RESOURCE(r, n) auto temp = std::string(__FILE__); \
+r->SetName(std::wstring(std::wstring(n) + L" (line: " + std::to_wstring(__LINE__) + L" file: " + std::wstring(temp.begin(), temp.end())).c_str());
 #else
 #define NAME_D3D12RESOURCE(r, n) r->SetName(n);
 #endif
@@ -175,7 +141,7 @@ struct FenceObject
 #define GET_VB_RESOURCE(vb) std::get<0>(vb)
 #define GET_VB_UPLOAD_RESOURCE(vb) std::get<1>(vb)
 #define GET_VB_VIEW(vb) std::get<2>(vb)
-#define GET_CB_ADRESS(cb, idx) cb.second[idx]
+#define GET_CB_ADDRESS(cb, idx) cb.second[idx]
 
 // Template Function Implementations
 
@@ -229,7 +195,7 @@ void D3D12Viewer::CreateRTVsFromResourceArray(std::array<ComPtr<ID3D12Resource>,
 
 [[nodiscard]] inline std::variant<std::pair<ID3DBlob*, D3D12_SHADER_BYTECODE>, std::string> D3D12Viewer::LoadShader(std::string_view path, std::string_view entry, std::string_view type)
 {
-	D3D_SHADER_MACRO defines[] = { "GPU", NULL, NULL, NULL };
+	D3D_SHADER_MACRO defines[] = { "GPU", nullptr, nullptr, nullptr };
 
 	ID3DBlob* shader;
 	ID3DBlob* error = nullptr;

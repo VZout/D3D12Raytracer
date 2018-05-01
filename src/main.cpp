@@ -6,7 +6,9 @@
 #include "window.hpp"
 #include "d3d12_viewer.hpp"
 #include "d3d12_ray_tracer.hpp"
+#ifdef ENABLE_IMGUI
 #include "imgui\imgui.h"
+#endif
 
 float rt_viewport_size = 1;
 float rt_z_near = 1;
@@ -67,6 +69,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 		viewer->NewFrame();
 
 		// ImGui
+#ifdef ENABLE_IMGUI
 		ImGui::Begin("Raytracer Properties", &imgui_show_properties);
 		ImGui::Text("Framerate: %d", fps);
 		ImGui::Text("CPU Frametime: %f (Mu)", cpu_frame_time);
@@ -82,6 +85,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 		ImGui::DragFloat3("Camera Position", rt_camera_pos, 0.1f);
 		ImGui::ColorEdit3("SkyColor", rt_sky_color.data);
 		ImGui::End();
+#endif
 
 		RTProperties properties;
 		properties.z_near = rt_z_near;

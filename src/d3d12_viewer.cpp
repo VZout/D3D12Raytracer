@@ -4,8 +4,10 @@
 #include <iostream>
 
 #include "window.hpp"
+#ifdef ENABLE_IMGUI
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_dx12.h"
+#endif
 
 D3D12Viewer::D3D12Viewer(Application& app) : Viewer(app)
 {
@@ -22,7 +24,7 @@ D3D12Viewer::D3D12Viewer(Application& app) : Viewer(app)
 	// Get Back buffers and create SRV's to them.
 	m_render_targets = GetRenderTargetsFromSwapChain<num_back_buffers>(m_swap_chain);
 	m_render_target_view_heap = CreateRenderTargetViewHeap(num_back_buffers);
-	CreateRTVsFromResourceArray(m_render_targets, (CD3DX12_CPU_DESCRIPTOR_HANDLE)m_render_target_view_heap->GetCPUDescriptorHandleForHeapStart());
+	CreateRTVsFromResourceArray(m_render_targets,(CD3DX12_CPU_DESCRIPTOR_HANDLE)m_render_target_view_heap->GetCPUDescriptorHandleForHeapStart());
 
 	// Create Viewport and sciccor rect.
 	m_viewport = CreateViewportAndRect(600, 600);
@@ -94,9 +96,13 @@ void D3D12Viewer::NewFrame()
 	);
 	m_cmd_list->ResourceBarrier(1, &begin_transition);
 
+#ifdef ENABLE_IMGUI
 	ImGui_ImplDX12_NewFrame(m_cmd_list.Get());
+#endif
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(m_render_target_view_heap->GetCPUDescriptorHandleForHeapStart(), m_frame_idx, rtv_increment_size);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(m_render_target_view_heap->GetCPUDescriptorHandleForHeapStart(),
+	                                         m_frame_idx,
+	                                         rtv_increment_size);
 	m_cmd_list->ClearRenderTargetView(rtv_handle, m_clear_color, 0, nullptr);
 	m_cmd_list->OMSetRenderTargets(1, &rtv_handle, false, nullptr);
 	
@@ -119,10 +125,12 @@ void D3D12Viewer::NewFrame()
 void D3D12Viewer::Present()
 {
 	// Render ImGui.
+#ifdef ENABLE_IMGUI
 	auto teamp_heap = imgui_descriptor_heap.Get();
 	m_cmd_list->SetDescriptorHeaps(1, &teamp_heap);
 	ImGui::Render();
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData());
+#endif
 
 	// Close command lists
 	CD3DX12_RESOURCE_BARRIER end_transition = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -189,6 +197,7 @@ void D3D12Viewer::SetupD3D12()
 
 void D3D12Viewer::SetupImGui()
 {
+#ifdef ENABLE_IMGUI
 	D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
 	heap_desc.NumDescriptors = 10;
 	heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -213,6 +222,7 @@ void D3D12Viewer::SetupImGui()
 
 	ImGui_ImplDX12_InvalidateDeviceObjects();
 	ImGui_ImplDX12_CreateDeviceObjects();
+#endif
 }
 
 void D3D12Viewer::SetupSwapChain(std::uint16_t width, std::uint16_t height)
@@ -370,7 +380,7 @@ ComPtr<ID3D12PipelineState> D3D12Viewer::CreateBasicPipelineState(ComPtr<ID3D12R
 	HRESULT hr = m_device->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&pipeline));
 	if (FAILED(hr))
 	{
-		throw "Failed to create graphics pipeline";
+		throw std::runtime_error("Failed to create graphics pipeline");
 	}
 	pipeline->SetName(L"Raytracing pipeline object");
 
@@ -539,15 +549,15 @@ std::pair<D3D12_VIEWPORT, D3D12_RECT> D3D12Viewer::CreateViewportAndRect(std::ui
 	scissor_rect.right = width;
 	scissor_rect.bottom = height;
 
-	return {viewport, scissor_rect };
+	return { viewport, scissor_rect };
 }
 
 inline std::wstring D3D12Viewer::GetUTF16(std::string_view const str, int codepage)
 {
 	if (str.empty()) return std::wstring();
-	int sz = MultiByteToWideChar(codepage, 0, &str[0], (int)str.size(), 0, 0);
+	int sz = MultiByteToWideChar((UINT)codepage, 0, &str[0], (int)str.size(), 0, 0);
 	std::wstring retval(sz, 0);
-	MultiByteToWideChar(codepage, 0, &str[0], (int)str.size(), &retval[0], sz);
+	MultiByteToWideChar((UINT)codepage, 0, &str[0], (int)str.size(), &retval[0], sz);
 	return retval;
 }
 
@@ -607,4 +617,59 @@ D3D12Viewer::VertexBuffer D3D12Viewer::CreateVertexBuffer(std::vector<fm::vec3> 
 	vertex_buffer_view.SizeInBytes = vertex_buffer_size;
 
 	return { buffer, staging_buffer, vertex_buffer_view };
+}
+
+FenceObject::FenceObject(D3D12Viewer& viewer, const std::uint8_t num)
+{
+	HRESULT hr;
+
+	fences = new ComPtr<ID3D12Fence>[num];
+	fence_values = new UINT64[num];
+
+	// create the fences
+	for (std::uint8_t i = 0; i < num; i++)
+	{
+	hr = viewer.m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fences[i]));
+	if (FAILED(hr))
+	{
+	throw std::runtime_error("Failed to create fence.");
+	}
+	fence_values[i] = 0; // set the initial fence value to 0
+	}
+
+	// create a handle to a fence event
+	fence_event = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+	if (fence_event == nullptr)
+	{
+	throw std::runtime_error("Failed to create fence event.");
+	}
+}
+
+inline void FenceObject::Increment(std::uint8_t idx)
+{
+	fence_values[idx]++;
+}
+
+inline void FenceObject::Signal(ComPtr<ID3D12CommandQueue> queue, std::uint8_t idx)
+{
+	auto hr = queue->Signal(fences[idx].Get(), fence_values[idx]);
+	if (FAILED(hr))
+	{
+		throw std::runtime_error("Failed to signal command queue.");
+	}
+}
+
+inline void FenceObject::Wait(const std::uint8_t idx)
+{
+	if (fences[idx]->GetCompletedValue() < fence_values[idx])
+	{
+		// we have the fence create an event which is signaled once the fence's current value is "fenceValue"
+		auto hr = fences[idx]->SetEventOnCompletion(fence_values[idx], fence_event);
+		if (FAILED(hr))
+		{
+			throw std::runtime_error("Failed to set fence event.");
+		}
+
+		WaitForSingleObject(fence_event, INFINITE);
+	}
 }
