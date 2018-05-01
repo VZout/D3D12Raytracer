@@ -356,12 +356,14 @@ ComPtr<ID3D12PipelineState> D3D12Viewer::CreateBasicPipelineState(ComPtr<ID3D12R
 	{
 		auto msg = std::get<std::string>(vertex_shader);
 		MessageBox(nullptr, TEXT((char*)msg.c_str()), NULL, MB_OK | MB_ICONERROR);
+		std::exit(EXIT_FAILURE);
 	}
 
 	if (std::holds_alternative<std::string>(pixel_shader))
 	{
 		auto msg = std::get<std::string>(pixel_shader);
 		MessageBox(nullptr, TEXT((char*)msg.c_str()), NULL, MB_OK | MB_ICONERROR);
+		std::exit(EXIT_FAILURE);
 	}
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};

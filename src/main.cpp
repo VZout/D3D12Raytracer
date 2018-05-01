@@ -13,8 +13,8 @@
 float rt_viewport_size = 1;
 float rt_z_near = 1;
 float rt_epsilon = 0.08;
-float rt_canvas_size[2] = { 600, 600 };
-float rt_camera_pos[3] = { 0, 0, -3 };
+fm::vec2 rt_canvas_size = { 600, 600 };
+fm::vec3 rt_camera_pos = { 0, 0, -3 };
 fm::vec3 rt_sky_color = { 190.f / 255.f, 240.f / 255.f, 1 };
 bool rt_use_cpu = false;
 
@@ -24,7 +24,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 	
 	app->SetKeyCallback([&app](int key, int, int)
 	{
-		if (key == VK_ESCAPE)
+		if (key == 0x51)
 		{
 			app->Stop();
 		}
@@ -78,21 +78,21 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 		ImGui::DragFloat("Projection Near", &rt_z_near, 0.01f, 0);
 		ImGui::DragFloat("Epsilon", &rt_epsilon, 0.01f, 0);
 		ImGui::DragFloat("Viewport Size", &rt_viewport_size, 0.01f, 0);
-		ImGui::DragFloat2("Canvas Size", rt_canvas_size);
+		ImGui::DragFloat2("Canvas Size", rt_canvas_size.data);
 		ImGui::Checkbox("Use CPU", &rt_use_cpu);
 		ImGui::PopItemWidth();
 		ImGui::Separator();
-		ImGui::DragFloat3("Camera Position", rt_camera_pos, 0.1f);
+		ImGui::DragFloat3("Camera Position", rt_camera_pos.data, 0.1f);
 		ImGui::ColorEdit3("SkyColor", rt_sky_color.data);
 		ImGui::End();
 #endif
 
 		RTProperties properties;
 		properties.z_near = rt_z_near;
-		properties.canvas_size = { rt_canvas_size[0], rt_canvas_size[1] };
+		properties.canvas_size = rt_canvas_size;
 		properties.viewport_size = rt_viewport_size;
 		properties.epsilon = rt_epsilon;
-		properties.camera_pos = { rt_camera_pos[0], rt_camera_pos[1], rt_camera_pos[2] };
+		properties.camera_pos = rt_camera_pos;
 		properties.use_cpu = rt_use_cpu;
 		properties.sky_color = rt_sky_color;
 
