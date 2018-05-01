@@ -151,7 +151,7 @@ void D3D12Viewer::SetupD3D12()
 	// Setup debug layer
 	if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug_controller))))
 	{
-		//debug_controller->SetEnableGPUBasedValidation(true);
+		debug_controller->SetEnableGPUBasedValidation(true);
 		debug_controller->EnableDebugLayer();
 	}
 #endif

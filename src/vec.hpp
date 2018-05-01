@@ -1,6 +1,5 @@
 #pragma once
 
-#include <iostream>
 #include <cmath>
 
 namespace fm
@@ -52,114 +51,110 @@ namespace fm
 		};
 	}
 
-	template<class T = float, int R = 3>
+	template<class T = float, unsigned int R = 3>
 	class Vec : public storage::Vec<T, R>
 	{
 	public:
 		using storage::Vec<T, R>::data;
 
-		Vec(T x, T y)
-		{
-			data[0] = x;
-			data[1] = y;
-		}
+		constexpr Vec(T x, T y) : storage::Vec<T, R>{ x, y } {}
+		constexpr Vec(T x, T y, T z) : storage::Vec<T, R>{ x, y, z } {}
+		constexpr Vec(T x, T y, T z, T w) : storage::Vec<T, R>{ x, y, z, w } {}
 
-		Vec(T x, T y, T z)
+		constexpr Vec()
 		{
-			data[0] = x;
-			data[1] = y;
-			data[2] = z;
-		}
-
-		Vec(T x, T y, T z, T w)
-		{
-			data[0] = x;
-			data[1] = y;
-			data[2] = z;
-			data[3] = w;
-		}
-
-		Vec()
-		{
-			for (auto i = 0; i < R; i++)
+			for (decltype(R) i = 0; i < R; i++)
 			{
 				data[i] = 0;
 			}
 		}
 
-		Vec(T data[R])
+		constexpr explicit Vec(T data[R])
 		{
 			memcpy(this->data, data, sizeof(T) * R);
 		}
 
-		~Vec()
-		{
+		~Vec() = default;
 
-		}
-
-		T& operator[] (int i)
+		constexpr T& operator[] (int i)
 		{
 			return data[i];
 		}
 
-		Vec& operator+=(const Vec& rhs)
+		constexpr Vec& operator+=(const Vec& rhs)
 		{
-			for (auto i = 0; i < R; i++)
+			for (decltype(R) i = 0; i < R; i++)
 			{
 				data[i] += rhs.data[i];
 			}
 			return *this;
 		}
 
-		Vec& operator-=(const Vec& rhs)
+		constexpr Vec& operator-=(const Vec& rhs)
 		{
-			for (auto i = 0; i < R; i++)
+			for (decltype(R) i = 0; i < R; i++)
 			{
 				data[i] -= rhs.data[i];
 			}
 			return *this;
 		}
 
-		Vec& operator*=(const Vec& rhs)
+		constexpr Vec& operator*=(const Vec& rhs)
 		{
-			for (auto i = 0; i < R; i++)
+			if constexpr (R == 3)
 			{
-				data[i] *= rhs.data[i];
+				data[0] *= rhs.data[0];
+				data[1] *= rhs.data[1];
+				data[2] *= rhs.data[2];
+				return *this;
 			}
-			return *this;
+			else if constexpr (R == 4)
+			{
+				data[0] *= rhs.data[0];
+				data[1] *= rhs.data[1];
+				data[2] *= rhs.data[2];
+				data[3] *= rhs.data[3];
+				return *this;
+			} else {
+				for (decltype(R) i = 0; i < R; i++)
+				{
+					data[i] *= rhs.data[i];
+				}
+				return *this;
+			}
 		}
 
-		Vec operator*(const T& scalar)
+		constexpr Vec operator*(const T& scalar)
 		{
 			Vec r = *this;
-			for (auto i = 0; i < R; i++)
+			for (decltype(R) i = 0; i < R; i++)
 			{
 				r.data[i] *= scalar;
 			}
 			return r;
 		}
 
-		friend Vec operator+(Vec lhs, const Vec& rhs)
+		constexpr friend Vec operator+(Vec lhs, const Vec& rhs)
 		{
 			lhs += rhs;
 			return lhs;
 		}
 
-		friend Vec operator-(Vec lhs, const Vec& rhs)
+		constexpr friend Vec operator-(Vec lhs, const Vec& rhs)
 		{
 			lhs -= rhs;
 			return lhs;
 		}
 
-		friend Vec operator*(Vec lhs, const Vec& rhs)
+		constexpr friend Vec operator*(Vec lhs, const Vec& rhs)
 		{
 			lhs *= rhs;
 			return lhs;
 		}
 
-		bool operator==(const Vec& other) const
+		constexpr bool operator==(const Vec& other) const
 		{
-			for (auto i = 0; i < R; i++)
+			for (decltype(R) i = 0; i < R; i++)
 			{
 				if (data[i] != other.data[i])
 				{
@@ -170,9 +165,9 @@ namespace fm
 			return true;
 		}
 
-		bool operator!=(const Vec& other) const
+		constexpr bool operator!=(const Vec& other) const
 		{
-			for (auto i = 0; i < R; i++)
+			for (decltype(R) i = 0; i < R; i++)
 			{
 				if (data[i] != other.data[i])
 				{
@@ -183,11 +178,11 @@ namespace fm
 			return false;
 		}
 
-		T SqrtLength()
+		constexpr T SqrtLength()
 		{
 			T retval = 0;
 
-			for (auto i = 0; i < R; i++)
+			for (decltype(R) i = 0; i < R; i++)
 			{
 				retval += data[i] * data[i];
 			}
@@ -195,17 +190,17 @@ namespace fm
 			return retval;
 		}
 
-		T Length()
+		constexpr T Length()
 		{
 			return std::sqrt(SqrtLength());
 		}
 
-		Vec Normalized()
+		constexpr Vec Normalized()
 		{
 			Vec retval;
-			float l = Length();
+			const T l = Length();
 
-			for (auto i = 0; i < R; i++)
+			for (decltype(R) i = 0; i < R; i++)
 			{
 				retval.data[i] = data[i] / l;
 			}
@@ -213,12 +208,12 @@ namespace fm
 			return retval;
 		}
 
-		static Vec Normalize(Vec v)
+		constexpr static Vec Normalize(Vec v)
 		{
 			Vec retval;
-			float l = v.Length();
+			const T l = v.Length();
 
-			for (auto i = 0; i < R; i++)
+			for (decltype(R) i = 0; i < R; i++)
 			{
 				retval.data[i] = v.data[i] / l;
 			}
@@ -226,11 +221,11 @@ namespace fm
 			return retval;
 		}
 
-		T Dot(const Vec& other) const
+		constexpr T Dot(const Vec& other) const
 		{
 			T retval = 0;
 
-			for (auto i = 0; i < R; i++)
+			for (decltype(R) i = 0; i < R; i++)
 			{
 				retval += data[i] * other.data[i];
 			}
@@ -239,7 +234,7 @@ namespace fm
 		}
 
 		// 3D Cross product.
-		Vec Cross(const Vec& other) const
+		constexpr Vec Cross(const Vec& other) const
 		{
 			Vec retval;
 
