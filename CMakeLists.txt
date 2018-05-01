@@ -42,6 +42,15 @@ set(IMGUI_SOURCES
 	src/imgui/imgui_internal.h
 	)
 
-add_executable(game WIN32 ${HEADERS} ${IMGUI_SOURCES})
+file(GLOB PS_SHADERS "${CMAKE_CURRENT_SOURCE_DIR}/../*.vs")
+file(GLOB VS_SHADERS "${CMAKE_CURRENT_SOURCE_DIR}/../*.ps")
+file(GLOB UTIL_SHADERS "${CMAKE_CURRENT_SOURCE_DIR}/../*.hlsl")
+#set_source_files_properties(${PS_SHADERS} PROPERTIES VS_SHADER_TYPE Pixel VS_SHADER_MODEL 5.0 VS_SHADER_ENTRYPOINT main)
+#set_source_files_properties(${VS_SHADERS} PROPERTIES VS_SHADER_TYPE Vertex VS_SHADER_MODEL 5.0 VS_SHADER_ENTRYPOINT main)
+
+add_executable(game WIN32 ${HEADERS} ${IMGUI_SOURCES} ${PS_SHADERS} ${VS_SHADERS} ${UTIL_SHADERS})
 target_link_libraries(game ${D3D12_LIBS})
 set_target_properties(game PROPERTIES CXX_STANDARD 17)
+
+set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT game)
+set_target_properties(game PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/../")

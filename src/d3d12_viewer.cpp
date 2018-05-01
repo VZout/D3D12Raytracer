@@ -349,8 +349,8 @@ ComPtr<ID3D12PipelineState> D3D12Viewer::CreateBasicPipelineState(ComPtr<ID3D12R
 	input_layout_desc.NumElements = input_layout.size();
 	input_layout_desc.pInputElementDescs = input_layout.data();
 
-	auto vertex_shader = LoadShader("rt_vertex.hlsl", "main", "vs_5_0");
-	auto pixel_shader = LoadShader("rt_pixel.hlsl", "main", "ps_5_0");
+	auto vertex_shader = LoadShader("raytracer.vs", "main", "vs_5_0");
+	auto pixel_shader = LoadShader("raytracer.ps", "main", "ps_5_0");
 
 	if (std::holds_alternative<std::string>(vertex_shader))
 	{
