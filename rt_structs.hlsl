@@ -17,6 +17,8 @@
 #define dot(a, b) a.Dot(b)
 #define REGISTER_B(i)
 
+#define FUNC inline
+
 using pc_type = float;
 struct Pixel
 {
@@ -33,6 +35,7 @@ struct Input
 #else
 #define constant static const
 #define REGISTER_B(i) : register(b##i)
+#define FUNC 
 #endif
 
 // Structs shared with CPU.

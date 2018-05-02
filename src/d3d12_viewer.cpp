@@ -3,6 +3,7 @@
 #include <cassert>
 #include <iostream>
 
+#include "texture.hpp"
 #include "window.hpp"
 #ifdef ENABLE_IMGUI
 #include "imgui/imgui.h"
@@ -54,6 +55,8 @@ D3D12Viewer::D3D12Viewer(Application& app) : Viewer(app)
 
 	// Synchronize with GPU to make sure VB is uploaded
 	fence->Signal(m_cmd_queue, m_frame_idx);
+
+	m_render_texture = CreateRenderTexture(app.GetWidth(), app.GetHeight(), DXGI_FORMAT_R32G32B32A32_FLOAT, (CD3DX12_CPU_DESCRIPTOR_HANDLE)m_main_srv_desc_heap->GetCPUDescriptorHandleForHeapStart());
 }
 
 D3D12Viewer::~D3D12Viewer()
@@ -102,7 +105,7 @@ void D3D12Viewer::NewFrame()
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_handle(m_render_target_view_heap->GetCPUDescriptorHandleForHeapStart(),
 	                                         m_frame_idx,
-	                                         rtv_increment_size);
+											 m_rtv_increment_size);
 	m_cmd_list->ClearRenderTargetView(rtv_handle, m_clear_color, 0, nullptr);
 	m_cmd_list->OMSetRenderTargets(1, &rtv_handle, false, nullptr);
 	
@@ -116,7 +119,7 @@ void D3D12Viewer::NewFrame()
 	auto teamp_heap = m_main_srv_desc_heap.Get();
 	m_cmd_list->SetDescriptorHeaps(1, &teamp_heap);
 
-	//m_cmd_list->SetGraphicsRootDescriptorTable(1, m_main_srv_desc_heap->GetGPUDescriptorHandleForHeapStart());
+	m_cmd_list->SetGraphicsRootDescriptorTable(1, m_main_srv_desc_heap->GetGPUDescriptorHandleForHeapStart());
 
 	m_cmd_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 	m_cmd_list->IASetVertexBuffers(0, 1, &GET_VB_VIEW(screen_quad_vb));
@@ -149,7 +152,7 @@ void D3D12Viewer::Present()
 	fence->Signal(m_cmd_queue, m_frame_idx);
 	
 	// Present the frame.
-	m_swap_chain->Present(use_vsync, 0);
+	m_swap_chain->Present(m_use_vsync, 0);
 	m_frame_idx = static_cast<std::uint8_t>(m_swap_chain->GetCurrentBackBufferIndex());
 }
 
@@ -159,7 +162,7 @@ void D3D12Viewer::SetupD3D12()
 	// Setup debug layer
 	if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug_controller))))
 	{
-		debug_controller->SetEnableGPUBasedValidation(true);
+		//debug_controller->SetEnableGPUBasedValidation(true);
 		debug_controller->EnableDebugLayer();
 	}
 #endif
@@ -169,16 +172,16 @@ void D3D12Viewer::SetupD3D12()
 	CreateDevice();
 
 	// Init increment sizes
-	rtv_increment_size = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-	dsv_increment_size = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
-	cbv_srv_uav_increment_size = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	sampler_increment_size = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+	m_rtv_increment_size = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	m_dsv_increment_size = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+	m_cbv_srv_uav_increment_size = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	m_sampler_increment_size = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 
 	// Create Global realtime queue.
 	D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {
 		D3D12_COMMAND_LIST_TYPE_DIRECT,
 		0,
-		disable_gpu_timeout ? D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT : D3D12_COMMAND_QUEUE_FLAG_NONE
+		m_disable_gpu_timeout ? D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT : D3D12_COMMAND_QUEUE_FLAG_NONE
 	};
 	HRESULT hr = m_device->CreateCommandQueue(&cmd_queue_desc, IID_PPV_ARGS(&m_cmd_queue));
 	if (FAILED(hr))
@@ -411,9 +414,9 @@ ComPtr<ID3D12RootSignature> D3D12Viewer::CreateBasicRootSignature()
 	CD3DX12_DESCRIPTOR_RANGE desc_range;
 	desc_range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
 
-	std::array<CD3DX12_ROOT_PARAMETER, 1> parameters;
+	std::array<CD3DX12_ROOT_PARAMETER, 2> parameters;
 	parameters[0].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
-	//parameters[1].InitAsDescriptorTable(1, &desc_range, D3D12_SHADER_VISIBILITY_PIXEL);
+	parameters[1].InitAsDescriptorTable(1, &desc_range, D3D12_SHADER_VISIBILITY_PIXEL);
 
 	CD3DX12_ROOT_SIGNATURE_DESC root_signature_desc;
 	root_signature_desc.Init(parameters.size(),
@@ -619,6 +622,89 @@ D3D12Viewer::VertexBuffer D3D12Viewer::CreateVertexBuffer(std::vector<fm::vec3> 
 	vertex_buffer_view.SizeInBytes = vertex_buffer_size;
 
 	return { buffer, staging_buffer, vertex_buffer_view };
+}
+
+RenderTexture* D3D12Viewer::CreateRenderTexture(unsigned int width, unsigned int height, DXGI_FORMAT format, CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle)
+{
+	RenderTexture* texture = new RenderTexture();
+
+	D3D12_RESOURCE_DESC texture_desc = {};
+	texture_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	texture_desc.Alignment = 0;
+	texture_desc.Width = width;
+	texture_desc.Height = height;
+	texture_desc.DepthOrArraySize = 1;
+	texture_desc.MipLevels = 1;
+	texture_desc.Format = format;
+	texture_desc.SampleDesc.Count = 1;
+	texture_desc.SampleDesc.Quality = 0;
+	texture_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	texture_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+	texture->texture_desc = texture_desc;
+
+	texture->bytes_per_row = width * SizeOfFormat(format);
+
+	size_t texture_upload_buffer_size;
+	m_device->GetCopyableFootprints(&texture_desc, 0, 1, 0, nullptr, nullptr, nullptr, &texture_upload_buffer_size);
+
+	CD3DX12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(texture_upload_buffer_size);
+
+	HRESULT hr = m_device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&texture_desc,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		nullptr,
+		IID_PPV_ARGS(&texture->resource));
+
+	if (FAILED(hr))
+		throw std::runtime_error("Couldn't create default texture");
+
+	hr = m_device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&desc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&texture->staging_resource));
+
+	if (FAILED(hr))
+		throw std::runtime_error("Couldn't create upload texture");
+
+	texture->resource->SetName(L"Render Texture");
+	texture->staging_resource->SetName(L"Upload Render Texture");
+
+	// Create SRV View
+	unsigned int increment_size = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
+	srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srv_desc.Format = texture->texture_desc.Format;
+	srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srv_desc.Texture2D.MipLevels = texture->texture_desc.MipLevels;
+	srv_desc.Texture2D.MostDetailedMip = 0;
+
+	m_device->CreateShaderResourceView(texture->resource.Get(), &srv_desc, srv_handle);
+
+	return texture;
+}
+
+void D3D12Viewer::UpdateRenderTexture(ComPtr<ID3D12GraphicsCommandList> cmd_list, RenderTexture* texture, BYTE* data)
+{
+	cmd_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(texture->resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST));
+
+	size_t texture_upload_buffer_size;
+	size_t bytes_per_row;
+	UINT num_rows;
+	m_device->GetCopyableFootprints(&texture->texture_desc, 0, 1, 0, nullptr, &num_rows, &bytes_per_row, &texture_upload_buffer_size);
+
+	D3D12_SUBRESOURCE_DATA image_data = {};
+	image_data.pData = data;
+	image_data.RowPitch = texture->bytes_per_row;
+	image_data.SlicePitch = (bytes_per_row)* num_rows;
+
+	UpdateSubresources(cmd_list.Get(), texture->resource.Get(), texture->staging_resource.Get(), 0, 0, 1, &image_data);
+	cmd_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(texture->resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 }
 
 FenceObject::FenceObject(D3D12Viewer& viewer, const std::uint8_t num)

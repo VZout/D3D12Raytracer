@@ -5,10 +5,10 @@
 #include "rt_structs.hlsl"
 
 #define REFLECTIONS
-#define REFLECTION_RECURSION 2
+#define REFLECTION_RECURSION 1
 
 #ifdef GPU
-//Texture2D in_texture : register(t0);
+Texture2D in_texture : register(t0);
 SamplerState s0 : register(s0);
 
 struct VS_OUTPUT
@@ -37,10 +37,11 @@ struct Light
 
 #ifndef GPU
 static float2 canvas_size(600, 600);
-constant float viewport_size = 1;
-constant float epsilon = 0.08;
+static float viewport_size = 1;
+static float epsilon = 0.08 /*std::numeric_limits<float>::epsilon()*/;
 static float3 camera_pos(0, 0, -3);
-constant float z_near = 1;
+static float z_near = 1;
+static float3 sky_color(0, 0, 0);
 #endif
 
 struct Intersection
@@ -57,7 +58,7 @@ static Sphere spheres[num_spheres];
 constant int num_lights = 3;
 static Light lights[num_lights];
 
-float3 CanvasToViewport(float2 pos)
+FUNC float3 CanvasToViewport(float2 pos)
 {
 	return float3(pos.x * viewport_size / canvas_size.x,
 		pos.y * viewport_size / canvas_size.y,
@@ -67,7 +68,7 @@ float3 CanvasToViewport(float2 pos)
 Intersection ClosestIntersection(float3 origin, float3 direction, float min_t, float max_t);
 float3 ReflectRay(float3 v1, float3 v2);
 
-Sphere MakeNull()
+FUNC Sphere MakeNull()
 {
 	Sphere null;
 	null.radius = -1;
@@ -75,7 +76,7 @@ Sphere MakeNull()
 	return null;
 }
 
-bool IsNull(Sphere s)
+FUNC bool IsNull(Sphere s)
 {
 	if (s.radius < 0)
 	{
@@ -88,7 +89,7 @@ bool IsNull(Sphere s)
 #define AMBIENT 0
 #define POINT 1
 
-float3 ComputeLighting(float3 pont, float3 N, float3 V, float specular, float max_t)
+FUNC float3 ComputeLighting(float3 pont, float3 N, float3 V, float specular, float max_t)
 {
 	float intensity = 0;
 	float length_n = length(N);
@@ -139,7 +140,7 @@ float3 ComputeLighting(float3 pont, float3 N, float3 V, float specular, float ma
 	return float3(intensity, intensity, intensity);
 }
 
-float2 IntersectRaySphere(float3 origin, float3 direction, Sphere sphere)
+FUNC float2 IntersectRaySphere(float3 origin, float3 direction, Sphere sphere)
 {
 	float3 oc = origin - sphere.center;
 
@@ -159,7 +160,7 @@ float2 IntersectRaySphere(float3 origin, float3 direction, Sphere sphere)
 	return float2(t1, t2);
 }
 
-Intersection ClosestIntersection(float3 origin, float3 direction, float min_t, float max_t)
+FUNC Intersection ClosestIntersection(float3 origin, float3 direction, float min_t, float max_t)
 {
 	float closest_t = inf;
 	Sphere closest_sphere = MakeNull();
@@ -186,7 +187,7 @@ Intersection ClosestIntersection(float3 origin, float3 direction, float min_t, f
 	return retval;
 }
 
-float3 ReflectRay(float3 v1, float3 v2)
+FUNC float3 ReflectRay(float3 v1, float3 v2)
 {
 	return (v2 * ((2.f * dot(v1, v2))) - v1);
 }
@@ -201,7 +202,7 @@ struct OutRef
 	bool end;
 };
 
-float3 RecursiveTraceRay(float3 origin, float3 direction, float min_t, float max_t, int depth)
+FUNC float3 RecursiveTraceRay(float3 origin, float3 direction, float min_t, float max_t, int depth)
 {
 #ifdef REFLECTIONS
 	float3 reflected_color;
@@ -282,7 +283,7 @@ float3 RecursiveTraceRay(float3 origin, float3 direction, float min_t, float max
 #endif
 }
 
-float3 TraceRay(float3 origin, float3 direction, float min_t, float max_t, int depth)
+FUNC float3 TraceRay(float3 origin, float3 direction, float min_t, float max_t, int depth)
 {
 
 	Intersection intersect = ClosestIntersection(origin, direction, min_t, max_t);
@@ -314,9 +315,17 @@ float3 TraceRay(float3 origin, float3 direction, float min_t, float max_t, int d
 #ifdef GPU
 float4 main(VS_OUTPUT input) : SV_TARGET
 #else
-float4 PixelTrace(Input input)
+FUNC float4 PixelTrace(Input input)
 #endif
 {
+#ifdef GPU
+	if (use_cpu)
+	{
+		float4 color = in_texture.Sample(s0, input.uv);
+		return float4(color);
+	}
+#endif
+
 	spheres[0].center = float3(0, 0, 5);
 	spheres[0].color = float3(1, 0, 0);
 	spheres[0].radius = 1;
@@ -374,13 +383,6 @@ float4 PixelTrace(Input input)
 	float3 dir = CanvasToViewport(pixel_pos);
 	float3 color = TraceRay(camera_pos, dir, z_near, inf, REFLECTION_RECURSION);
 
-#ifdef GPU
-	//if (use_cpu)
-	//{
-		//color.rgb = in_texture.Sample(s0, input.uv);
-	//}
-#endif
-
 	return float4(color.x, color.y, color.z, 1.f);
 }
 
@@ -397,4 +399,5 @@ float4 PixelTrace(Input input)
 
 #undef AMBIENT
 #undef POINT
+#undef FUNC
 #endif

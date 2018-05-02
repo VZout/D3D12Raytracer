@@ -2,20 +2,7 @@
 
 #include <cstdint>
 #include "../rt_structs.hlsl"
-
-#ifndef GPU
-#undef float3
-#undef float2
-#undef float4
-#undef constant
-#undef cbuffer
-#undef length(v) {}
-#undef dot(a, b) {}
-#undef normalize(a) {}
-
-#undef AMBIENT
-#undef POINT
-#endif
+#include "../raytracer.ps"
 
 struct Texture;
 class Viewer;

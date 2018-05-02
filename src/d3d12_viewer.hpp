@@ -18,10 +18,20 @@
 
 using Microsoft::WRL::ComPtr;
 
+struct RenderTexture
+{
+	ComPtr<ID3D12Resource> resource;
+	ComPtr<ID3D12Resource> staging_resource;
+	size_t bytes_per_row;
+	std::uint8_t* address;
+	D3D12_RESOURCE_DESC texture_desc;
+};
+
 class D3D12Viewer : public Viewer
 {
 	friend struct FenceObject;
 	friend class D3D12RayTracer;
+	friend class CPURayTracer;
 
 	using VertexBuffer = std::tuple<ComPtr<ID3D12Resource>, ComPtr<ID3D12Resource>, D3D12_VERTEX_BUFFER_VIEW>;
 
@@ -35,9 +45,11 @@ public:
 	static const D3D_FEATURE_LEVEL m_feature_level = D3D_FEATURE_LEVEL_11_0;
 	static const DXGI_FORMAT m_back_buffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	const std::string m_shader_model = "_5_0";
-	static const bool disable_gpu_timeout = false;
+	static const bool m_shader_optimization = true;
+	static const bool m_shader_debug = true;
+	static const bool m_disable_gpu_timeout = false;
 	static const std::uint8_t num_back_buffers = 2;
-	static const bool use_vsync = false;
+	static const bool m_use_vsync = false;
 	const float m_clear_color[4] = { 0, 0, 0, 255 };
 
 private:
@@ -58,10 +70,12 @@ private:
 	ComPtr<ID3D12Debug1> debug_controller;
 #endif
 
-	std::uint32_t rtv_increment_size;
-	std::uint32_t dsv_increment_size;
-	std::uint32_t cbv_srv_uav_increment_size;
-	std::uint32_t sampler_increment_size;
+	RenderTexture* m_render_texture;
+
+	std::uint32_t m_rtv_increment_size;
+	std::uint32_t m_dsv_increment_size;
+	std::uint32_t m_cbv_srv_uav_increment_size;
+	std::uint32_t m_sampler_increment_size;
 
 	std::uint8_t m_frame_idx;
 
@@ -106,6 +120,8 @@ private:
 	[[nodiscard]] VertexBuffer CreateVertexBuffer(std::vector<fm::vec3> vertices);
 	template<const std::uint16_t N>
 	[[nodiscard]] std::pair<std::array<ComPtr<ID3D12Resource>, N>, std::array<UINT8*, N>> CreateConstantBuffer(size_t unaligned_size);
+	[[nodiscard]] RenderTexture* CreateRenderTexture(unsigned int width, unsigned int height, DXGI_FORMAT format, CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle);
+	void UpdateRenderTexture(ComPtr<ID3D12GraphicsCommandList> cmd_list, RenderTexture* texture, BYTE* data);
 };
 
 struct FenceObject
@@ -201,12 +217,15 @@ void D3D12Viewer::CreateRTVsFromResourceArray(std::array<ComPtr<ID3D12Resource>,
 
 	ID3DBlob* shader;
 	ID3DBlob* error = nullptr;
+	UINT flags0 = 0;
+	flags0 |= m_shader_optimization ? D3DCOMPILE_OPTIMIZATION_LEVEL3 : D3DCOMPILE_SKIP_OPTIMIZATION;
+	if (m_shader_debug) flags0 |=  D3DCOMPILE_DEBUG;
 	HRESULT hr = D3DCompileFromFile(GetUTF16(path, CP_UTF8).c_str(),
 		defines,
 		D3D_COMPILE_STANDARD_FILE_INCLUDE,
 		entry.data(),
 		type.data(),
-		D3DCOMPILE_OPTIMIZATION_LEVEL3 | D3DCOMPILE_DEBUG,
+		flags0,
 		0,
 		&shader,
 		&error);
@@ -256,4 +275,126 @@ template<const std::uint16_t N>
 	}
 
 	return { const_buffers, const_buffer_adresses };
+}
+
+[[nodiscard]] inline unsigned int SizeOfFormat(const DXGI_FORMAT format)
+{
+	switch (format)
+	{
+	case DXGI_FORMAT_R32G32B32A32_TYPELESS:
+	case DXGI_FORMAT_R32G32B32A32_FLOAT:
+	case DXGI_FORMAT_R32G32B32A32_UINT:
+	case DXGI_FORMAT_R32G32B32A32_SINT:
+		return 16;
+
+	case DXGI_FORMAT_R32G32B32_TYPELESS:
+	case DXGI_FORMAT_R32G32B32_FLOAT:
+	case DXGI_FORMAT_R32G32B32_UINT:
+	case DXGI_FORMAT_R32G32B32_SINT:
+		return 12;
+
+	case DXGI_FORMAT_R16G16B16A16_TYPELESS:
+	case DXGI_FORMAT_R16G16B16A16_FLOAT:
+	case DXGI_FORMAT_R16G16B16A16_UNORM:
+	case DXGI_FORMAT_R16G16B16A16_UINT:
+	case DXGI_FORMAT_R16G16B16A16_SNORM:
+	case DXGI_FORMAT_R16G16B16A16_SINT:
+	case DXGI_FORMAT_R32G32_TYPELESS:
+	case DXGI_FORMAT_R32G32_FLOAT:
+	case DXGI_FORMAT_R32G32_UINT:
+	case DXGI_FORMAT_R32G32_SINT:
+	case DXGI_FORMAT_R32G8X24_TYPELESS:
+	case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
+	case DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS:
+	case DXGI_FORMAT_X32_TYPELESS_G8X24_UINT:
+		return 8;
+
+	case DXGI_FORMAT_R10G10B10A2_TYPELESS:
+	case DXGI_FORMAT_R10G10B10A2_UNORM:
+	case DXGI_FORMAT_R10G10B10A2_UINT:
+	case DXGI_FORMAT_R11G11B10_FLOAT:
+	case DXGI_FORMAT_R8G8B8A8_TYPELESS:
+	case DXGI_FORMAT_R8G8B8A8_UNORM:
+	case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+	case DXGI_FORMAT_R8G8B8A8_UINT:
+	case DXGI_FORMAT_R8G8B8A8_SNORM:
+	case DXGI_FORMAT_R8G8B8A8_SINT:
+	case DXGI_FORMAT_R16G16_TYPELESS:
+	case DXGI_FORMAT_R16G16_FLOAT:
+	case DXGI_FORMAT_R16G16_UNORM:
+	case DXGI_FORMAT_R16G16_UINT:
+	case DXGI_FORMAT_R16G16_SNORM:
+	case DXGI_FORMAT_R16G16_SINT:
+	case DXGI_FORMAT_R32_TYPELESS:
+	case DXGI_FORMAT_D32_FLOAT:
+	case DXGI_FORMAT_R32_FLOAT:
+	case DXGI_FORMAT_R32_UINT:
+	case DXGI_FORMAT_R32_SINT:
+	case DXGI_FORMAT_R24G8_TYPELESS:
+	case DXGI_FORMAT_D24_UNORM_S8_UINT:
+	case DXGI_FORMAT_R24_UNORM_X8_TYPELESS:
+	case DXGI_FORMAT_X24_TYPELESS_G8_UINT:
+	case DXGI_FORMAT_B8G8R8A8_UNORM:
+	case DXGI_FORMAT_B8G8R8X8_UNORM:
+		return 4;
+
+	case DXGI_FORMAT_R8G8_TYPELESS:
+	case DXGI_FORMAT_R8G8_UNORM:
+	case DXGI_FORMAT_R8G8_UINT:
+	case DXGI_FORMAT_R8G8_SNORM:
+	case DXGI_FORMAT_R8G8_SINT:
+	case DXGI_FORMAT_R16_TYPELESS:
+	case DXGI_FORMAT_R16_FLOAT:
+	case DXGI_FORMAT_D16_UNORM:
+	case DXGI_FORMAT_R16_UNORM:
+	case DXGI_FORMAT_R16_UINT:
+	case DXGI_FORMAT_R16_SNORM:
+	case DXGI_FORMAT_R16_SINT:
+	case DXGI_FORMAT_B5G6R5_UNORM:
+	case DXGI_FORMAT_B5G5R5A1_UNORM:
+		return 2;
+
+	case DXGI_FORMAT_R8_TYPELESS:
+	case DXGI_FORMAT_R8_UNORM:
+	case DXGI_FORMAT_R8_UINT:
+	case DXGI_FORMAT_R8_SNORM:
+	case DXGI_FORMAT_R8_SINT:
+	case DXGI_FORMAT_A8_UNORM:
+		return 1;
+
+		// Compressed format; http://msdn2.microsoft.com/en-us/library/bb694531(VS.85).aspx
+	case DXGI_FORMAT_BC2_TYPELESS:
+	case DXGI_FORMAT_BC2_UNORM:
+	case DXGI_FORMAT_BC2_UNORM_SRGB:
+	case DXGI_FORMAT_BC3_TYPELESS:
+	case DXGI_FORMAT_BC3_UNORM:
+	case DXGI_FORMAT_BC3_UNORM_SRGB:
+	case DXGI_FORMAT_BC5_TYPELESS:
+	case DXGI_FORMAT_BC5_UNORM:
+	case DXGI_FORMAT_BC5_SNORM:
+		return 16;
+
+		// Compressed format; http://msdn2.microsoft.com/en-us/library/bb694531(VS.85).aspx
+	case DXGI_FORMAT_R1_UNORM:
+	case DXGI_FORMAT_BC1_TYPELESS:
+	case DXGI_FORMAT_BC1_UNORM:
+	case DXGI_FORMAT_BC1_UNORM_SRGB:
+	case DXGI_FORMAT_BC4_TYPELESS:
+	case DXGI_FORMAT_BC4_UNORM:
+	case DXGI_FORMAT_BC4_SNORM:
+		return 8;
+
+		// Compressed format; http://msdn2.microsoft.com/en-us/library/bb694531(VS.85).aspx
+	case DXGI_FORMAT_R9G9B9E5_SHAREDEXP:
+		return 4;
+
+		// These are compressed, but bit-size information is unclear.
+	case DXGI_FORMAT_R8G8_B8G8_UNORM:
+	case DXGI_FORMAT_G8R8_G8B8_UNORM:
+		return 4;
+
+	case DXGI_FORMAT_UNKNOWN:
+	default:
+		return 0;
+	}
 }

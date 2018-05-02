@@ -23,6 +23,8 @@ set(HEADERS
 	src/d3dx12.hpp
 	src/ray_tracer.hpp
 	src/ray_tracer.cpp
+	src/cpu_ray_tracer.cpp
+	src/cpu_ray_tracer.hpp
 	src/d3d12_ray_tracer.hpp
 	src/d3d12_ray_tracer.cpp
 	src/texture.hpp

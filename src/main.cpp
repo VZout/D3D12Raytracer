@@ -6,6 +6,7 @@
 #include "window.hpp"
 #include "d3d12_viewer.hpp"
 #include "d3d12_ray_tracer.hpp"
+#include "cpu_ray_tracer.hpp"
 #ifdef ENABLE_IMGUI
 #include "imgui\imgui.h"
 #endif
@@ -20,9 +21,10 @@ bool rt_use_cpu = false;
 
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 {
-	auto app = std::make_unique<Application>(instance, cmd_show, "Raytracer", 720, 720);
+	auto app = std::make_unique<Application>(instance, cmd_show, "Raytracer", 600, 600);
 
 	rt_canvas_size = { (float)app->GetWidth(), (float)app->GetHeight() };
+	rt_sky_color = { 0, 0, 0 };
 	
 	app->SetKeyCallback([&app](int key, int, int)
 	{
@@ -34,6 +36,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 
 	auto viewer = std::make_unique<D3D12Viewer>(*app);
 	auto ray_tracer = std::make_shared<D3D12RayTracer>();
+	auto cpu_ray_tracer = std::make_shared<CPURayTracer>();
 	viewer->SetRayTracer(ray_tracer.get());
 
 	// Timing variables
@@ -100,6 +103,12 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 
 		ray_tracer->UpdateSettings(viewer.get(), properties);
 		ray_tracer->TracePixel(viewer.get(), 0, 0);
+
+		if (rt_use_cpu)
+		{
+			cpu_ray_tracer->UpdateSettings(viewer.get(), properties);
+			cpu_ray_tracer->TracePixel(viewer.get(), 0, 0);
+		}
 
 		viewer->Present();
 	}

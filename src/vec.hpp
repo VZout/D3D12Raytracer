@@ -163,6 +163,17 @@ namespace fm
 			return r;
 		}
 
+		/*! Division operator */
+		constexpr Vec operator/(const T& scalar)
+		{
+			Vec r = *this;
+			for (decltype(R) i = 0; i < R; i++)
+			{
+				r.data[i] /= scalar;
+			}
+			return r;
+		}
+
 		/*! Addition operator */
 		constexpr friend Vec operator+(Vec lhs, const Vec& rhs)
 		{
