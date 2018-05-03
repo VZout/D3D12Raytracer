@@ -5,7 +5,7 @@
 #include "rt_structs.hlsl"
 
 #define REFLECTIONS
-#define REFLECTION_RECURSION 1
+#define REFLECTION_RECURSION 2
 
 #ifdef GPU
 Texture2D in_texture : register(t0);
@@ -42,6 +42,9 @@ static float epsilon = 0.08 /*std::numeric_limits<float>::epsilon()*/;
 static float3 camera_pos(0, 0, -3);
 static float z_near = 1;
 static float3 sky_color(0, 0, 0);
+static float3 floor_color(1, 1, 1);
+static float gamma = 1;
+static float exposure = 1;
 #endif
 
 struct Intersection
@@ -345,7 +348,7 @@ FUNC float4 PixelTrace(Input input)
 	spheres[2].metal = 0.4;
 
 	spheres[3].center = float3(0, -5001, 0);
-	spheres[3].color = float3(1, 1, 1);
+	spheres[3].color = floor_color;
 	spheres[3].radius = 5000;
 	spheres[3].specular = 20;
 	spheres[3].metal = 0.5;
@@ -383,6 +386,11 @@ FUNC float4 PixelTrace(Input input)
 	float3 dir = CanvasToViewport(pixel_pos);
 	float3 color = TraceRay(camera_pos, dir, z_near, inf, REFLECTION_RECURSION);
 
+	color = clamp(color * exposure, 0.f, 1.f);
+	color.x = pow(color.x, 1.f / gamma);
+	color.y = pow(color.y, 1.f / gamma);
+	color.z = pow(color.z, 1.f / gamma);
+
 	return float4(color.x, color.y, color.z, 1.f);
 }
 
@@ -396,6 +404,7 @@ FUNC float4 PixelTrace(Input input)
 #undef length(v) {}
 #undef dot(a, b) {}
 #undef normalize(a) {}
+#undef clamp
 
 #undef AMBIENT
 #undef POINT

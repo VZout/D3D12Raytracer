@@ -207,7 +207,7 @@ void D3D12Viewer::CreateRTVsFromResourceArray(std::array<ComPtr<ID3D12Resource>,
 	for (std::uint16_t i = 0; i < N; i++)
 	{
 		m_device->CreateRenderTargetView(render_targets[i].Get(), nullptr, desc_handle);
-		desc_handle.Offset(1, rtv_increment_size);
+		desc_handle.Offset(1, m_rtv_increment_size);
 	}
 }
 

@@ -11,13 +11,16 @@
 #include "imgui\imgui.h"
 #endif
 
-float rt_viewport_size = 1;
-float rt_z_near = 1;
-float rt_epsilon = 0.08;
-fm::vec2 rt_canvas_size;
-fm::vec3 rt_camera_pos = { 0, 0, -3 };
-fm::vec3 rt_sky_color = { 190.f / 255.f, 240.f / 255.f, 1 };
-bool rt_use_cpu = false;
+static float rt_viewport_size = 1;
+static float rt_z_near = 1;
+static float rt_epsilon = 0.08;
+static fm::vec2 rt_canvas_size;
+static fm::vec3 rt_camera_pos = { 0, 0, -3 };
+static fm::vec3 rt_sky_color = { 190.f / 255.f, 240.f / 255.f, 1 };
+static fm::vec3 rt_floor_color = { 1, 1, 1 };
+static bool rt_use_cpu = false;
+static float rt_gamma = 2.2f;
+static float rt_exposure = 1.f;
 
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 {
@@ -88,7 +91,12 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 		ImGui::PopItemWidth();
 		ImGui::Separator();
 		ImGui::DragFloat3("Camera Position", rt_camera_pos.data, 0.1f);
-		ImGui::ColorEdit3("SkyColor", rt_sky_color.data);
+		ImGui::ColorEdit3("Sky Color", rt_sky_color.data);
+		ImGui::ColorEdit3("Floor Color", rt_floor_color.data);
+		ImGui::DragFloat("Gamma", &rt_gamma, 0.1f);
+		ImGui::DragFloat("Exposure", &rt_exposure, 0.1f);
+		ImGui::Separator();
+		ImGui::Button("Reload GPU Raytracer");
 		ImGui::End();
 #endif
 
@@ -100,8 +108,14 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 		properties.camera_pos = rt_camera_pos;
 		properties.use_cpu = rt_use_cpu;
 		properties.sky_color = rt_sky_color;
+		properties.gamma = rt_gamma;
+		properties.exposure = rt_exposure;
+		properties.floor_color = rt_floor_color;
 
-		ray_tracer->UpdateSettings(viewer.get(), properties);
+		if (!rt_use_cpu)
+		{
+			ray_tracer->UpdateSettings(viewer.get(), properties);
+		}
 		ray_tracer->TracePixel(viewer.get(), 0, 0);
 
 		if (rt_use_cpu)

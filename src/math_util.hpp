@@ -22,6 +22,17 @@ namespace fm
 		return b1 + (s - a1)*(b2 - b1) / (a2 - a1);
 	}
 
+	inline fm::vec3 clamp(fm::vec3 in, float min, float max)
+	{
+		fm::vec3 out = in;
+
+		out.x = std::clamp(in.x, min, max);
+		out.y = std::clamp(in.y, min, max);
+		out.z = std::clamp(in.z, min, max);
+
+		return out;
+	}
+
 	template<typename T = float>
 	inline T rads(T deg)
 	{

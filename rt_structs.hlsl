@@ -3,7 +3,8 @@
 #endif
 
 #ifndef GPU
-#include "vec.hpp"
+#include "src/vec.hpp"
+#include "src/math_util.hpp"
 
 #include <array>
 
@@ -15,6 +16,7 @@
 #define length(v) v.Length()
 #define normalize(v) fm::Vec<float, 3>::Normalize(v);
 #define dot(a, b) a.Dot(b)
+#define clamp(a, b, c) fm::clamp(a, b, c)
 #define REGISTER_B(i)
 
 #define FUNC inline
@@ -47,5 +49,8 @@ cbuffer RTProperties REGISTER_B(0)
 	float3 camera_pos;
 	float z_near;
 	float3 sky_color;
+	float gamma;
+	float3 floor_color;
 	int use_cpu;
+	float exposure;
 };

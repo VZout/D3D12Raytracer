@@ -1,6 +1,7 @@
 #include "cpu_ray_tracer.hpp"
 
 #include "d3d12_viewer.hpp"
+#include "window.hpp"
 
 CPURayTracer::CPURayTracer() : RayTracer()
 {
@@ -42,9 +43,9 @@ void CPURayTracer::TracePixel(Viewer* viewer, std::uint32_t _x, std::uint32_t _y
 	x = 0;
 	y = 0;
 
-	for (auto k = 0; k < 600*600; k++)
+	for (auto k = 0; k < d3d12_viewer->m_app.GetWidth() * d3d12_viewer->m_app.GetHeight(); k++)
 	{
-		Input input = { { (float)x - 300, (float)y - 300 } };
+		Input input = { { (float)x - (d3d12_viewer->m_app.GetWidth() / 2), (float)y - (d3d12_viewer->m_app.GetHeight() / 2) } };
 		fm::vec4 color = PixelTrace(input);
 		pixels[k] = color;
 
@@ -69,4 +70,11 @@ void CPURayTracer::UpdateSettings(Viewer* viewer, RTProperties properties)
 
 	camera_pos = properties.camera_pos;
 	sky_color = properties.sky_color;
+	canvas_size = properties.canvas_size;
+	epsilon = properties.epsilon;
+	viewport_size = properties.viewport_size;
+	z_near = properties.z_near;
+	gamma = properties.gamma;
+	exposure = properties.exposure;
+	floor_color = properties.floor_color;
 }
