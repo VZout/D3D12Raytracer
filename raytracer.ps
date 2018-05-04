@@ -18,14 +18,8 @@ struct VS_OUTPUT
 };
 #endif
 
-struct Sphere
-{
-	float3 center;
-	float radius;
-	float3 color;
-	float specular;
-	float metal;
-};
+// ##################################
+#ifdef GPU
 
 struct Light
 {
@@ -38,7 +32,7 @@ struct Light
 #ifndef GPU
 static float2 canvas_size(600, 600);
 static float viewport_size = 1;
-static float epsilon = 0.08 /*std::numeric_limits<float>::epsilon()*/;
+static float epsilon = 0.08;
 static float3 camera_pos(0, 0, -3);
 static float z_near = 1;
 static float3 sky_color(0, 0, 0);
@@ -49,16 +43,25 @@ static float exposure = 1;
 
 struct Intersection
 {
-	Sphere closest;
+	Triangle closest;
 	float closest_t;
 };
 
 static const float inf = 9999999;
 
-constant int num_spheres = 4;
-static Sphere spheres[num_spheres];
+Triangle MakeNull()
+{
+	Triangle retval;
+	retval.metal = -inf;
+	return retval;
+}
 
-constant int num_lights = 3;
+bool IsNull(Triangle tri)
+{
+	return tri.metal == -inf;
+}
+
+constant int num_lights = 2;
 static Light lights[num_lights];
 
 FUNC float3 CanvasToViewport(float2 pos)
@@ -71,33 +74,16 @@ FUNC float3 CanvasToViewport(float2 pos)
 Intersection ClosestIntersection(float3 origin, float3 direction, float min_t, float max_t);
 float3 ReflectRay(float3 v1, float3 v2);
 
-FUNC Sphere MakeNull()
-{
-	Sphere null;
-	null.radius = -1;
-
-	return null;
-}
-
-FUNC bool IsNull(Sphere s)
-{
-	if (s.radius < 0)
-	{
-		return true;
-	}
-
-	return false;
-}
-
 #define AMBIENT 0
 #define POINT 1
 
 FUNC float3 ComputeLighting(float3 pont, float3 N, float3 V, float specular, float max_t)
 {
 	float intensity = 0;
-	float length_n = length(N);
-	float length_v = length(V);
+	const float length_n = length(N);
+	const float length_v = length(V);
 
+	[unroll(num_lights)]
 	for (int i = 0; i < num_lights; i++)
 	{
 		Light light = lights[i];
@@ -118,21 +104,22 @@ FUNC float3 ComputeLighting(float3 pont, float3 N, float3 V, float specular, flo
 		}
 
 		// Shadow check
-		Intersection intersect = ClosestIntersection(pont, vec_l, epsilon, max_t);
+		const Intersection intersect = ClosestIntersection(pont, normalize(vec_l), epsilon, length(vec_l));
 		if (!IsNull(intersect.closest))
 			continue;
 
 		// Diffuse
-		float n_dot_l = dot(N, vec_l);
+		const float n_dot_l = dot(N, vec_l);
 		if (n_dot_l > 0)
 		{
 			intensity += light.intensity * n_dot_l / (length_n * length(vec_l));
+			//intensity += light.intensity * n_dot_l;
 		}
 
 		if (specular != -1)
 		{
-			float3 vec_r = ReflectRay(vec_l, N);
-			float r_dot_v = dot(vec_r, V);
+			const float3 vec_r = ReflectRay(vec_l, N);
+			const float r_dot_v = dot(vec_r, V);
 			if (r_dot_v > 0)
 			{
 				intensity += light.intensity * pow(r_dot_v / (length(vec_r) * length_v), specular);
@@ -143,48 +130,54 @@ FUNC float3 ComputeLighting(float3 pont, float3 N, float3 V, float specular, flo
 	return float3(intensity, intensity, intensity);
 }
 
-FUNC float2 IntersectRaySphere(float3 origin, float3 direction, Sphere sphere)
-{
-	float3 oc = origin - sphere.center;
-
-	float k1 = dot(direction, direction);
-	float k2 = 2 * dot(oc, direction);
-	float k3 = dot(oc, oc) - sphere.radius * sphere.radius;
-
-	float discriminant = k2 * k2 - 4.f * k1 * k3;
-	if (discriminant < 0)
-	{
-		return float2(inf, inf);
-	}
-
-	float t1 = (-k2 + sqrt(discriminant)) / (2.f * k1);
-	float t2 = (-k2 - sqrt(discriminant)) / (2.f * k1);
-
-	return float2(t1, t2);
-}
+FUNC float2 IntersectRayTriangle(float3 orig, float3 dir, Triangle tri) 
+{ 
+   	const float3 v0v1 = tri.b - tri.a; 
+    const float3 v0v2 = tri.c - tri.a; 
+    const float3 pvec = cross(dir, v0v2); 
+    const float det = dot(v0v1, pvec); 
+ 
+    // ray and triangle are parallel if det is close to 0
+    if (abs(det) < epsilon) return float2(inf, inf); 
+ 
+    const float invDet = 1 / det; 
+ 
+    const float3 tvec = orig - tri.a; 
+    const float u = dot(tvec, pvec) * invDet; 
+    if (u < 0 || u > 1) return float2(inf, inf); 
+ 
+    const float3 qvec = cross(tvec, v0v1); 
+    const float v = dot(dir, qvec) * invDet; 
+    if (v < 0 || u + v > 1) return float2(inf, inf); 
+ 
+    const float t = dot(v0v2, qvec) * invDet; 
+ 
+    return (t > 0) ? float2(t, t) : float2(inf, inf); 
+} 
 
 FUNC Intersection ClosestIntersection(float3 origin, float3 direction, float min_t, float max_t)
 {
 	float closest_t = inf;
-	Sphere closest_sphere = MakeNull();
+	Triangle closest_triangle = MakeNull();
 
-	for (int i = 0; i < num_spheres; i++)
+	[unroll(num_triangles)]
+	for (int i = 0; i < num_triangles; i++)
 	{
-		float2 ts = IntersectRaySphere(origin, direction, spheres[i]);
+		const float2 ts = IntersectRayTriangle(origin, direction, triangles[i]);
 		if (ts[0] < closest_t && ts[0] > min_t && ts[0] < max_t)
 		{
 			closest_t = ts[0];
-			closest_sphere = spheres[i];
+			closest_triangle = triangles[i];
 		}
 		if (ts[1] < closest_t && ts[1] > min_t && ts[1] < max_t)
 		{
 			closest_t = ts[1];
-			closest_sphere = spheres[i];
+			closest_triangle = triangles[i];
 		}
 	}
 
 	Intersection retval;
-	retval.closest = closest_sphere;
+	retval.closest = closest_triangle;
 	retval.closest_t = closest_t;
 
 	return retval;
@@ -213,16 +206,14 @@ FUNC float3 RecursiveTraceRay(float3 origin, float3 direction, float min_t, floa
 
 	OutRef refs[REFLECTION_RECURSION];
 
-	while (depth > 0)
+	[unroll(REFLECTION_RECURSION)]
+	while (depth-- > 0)
 	{
-
-		depth--;
-
 		Intersection intersect = ClosestIntersection(origin, reflected_ray, min_t, max_t);
-		Sphere closest_sphere = intersect.closest;
-		float closest_t = intersect.closest_t;
+		Triangle closest_triangle = intersect.closest;
+		const float closest_t = intersect.closest_t;
 
-		if (IsNull(closest_sphere))
+		if (IsNull(closest_triangle))
 		{
 			reflected_color = sky_color;
 
@@ -230,20 +221,20 @@ FUNC float3 RecursiveTraceRay(float3 origin, float3 direction, float min_t, floa
 			refs[depth].ref_ray = reflected_ray;
 			refs[depth].ref_point = origin;
 			refs[depth].l_color = reflected_color;
-			refs[depth].metal = closest_sphere.metal;
+			refs[depth].metal = closest_triangle.metal;
 			refs[depth].end = true;
 			continue;
 		}
 
-		float3 P = origin + (reflected_ray * closest_t);
-		float3 N = normalize(P - closest_sphere.center);
+		const float3 P = origin + (reflected_ray * closest_t);
+		const float3 N = normalize(closest_triangle.normal*-1);
 
-		float3 view = reflected_ray * -1.f;
+		const float3 view = reflected_ray * -1.f;
 
-		float3 lighting = ComputeLighting(P, N, view, closest_sphere.specular, inf);
-		float3 local_color = closest_sphere.color * lighting;
+		const float3 lighting = ComputeLighting(P, N, view, closest_triangle.specular, inf);
+		const float3 local_color = closest_triangle.color * lighting;
 
-		if (closest_sphere.metal <= 0 || depth <= 0)
+		if (closest_triangle.metal <= 0 || depth <= 0)
 		{
 			reflected_color = local_color;
 
@@ -251,7 +242,7 @@ FUNC float3 RecursiveTraceRay(float3 origin, float3 direction, float min_t, floa
 			refs[depth].ref_ray = reflected_ray;
 			refs[depth].ref_point = P;
 			refs[depth].l_color = local_color;
-			refs[depth].metal = closest_sphere.metal;
+			refs[depth].metal = closest_triangle.metal;
 			refs[depth].end = true;
 			continue;
 		}
@@ -263,11 +254,12 @@ FUNC float3 RecursiveTraceRay(float3 origin, float3 direction, float min_t, floa
 		refs[depth].ref_ray = reflected_ray;
 		refs[depth].ref_point = P;
 		refs[depth].l_color = local_color;
-		refs[depth].metal = closest_sphere.metal;
+		refs[depth].metal = closest_triangle.metal;
 		refs[depth].end = false;
 	}
 
 	float3 result = refs[REFLECTION_RECURSION - 1].ref_color;
+	[unroll(REFLECTION_RECURSION)]
 	for (int i = 0; i < REFLECTION_RECURSION; i++)
 	{
 		if (!refs[i].end)
@@ -289,30 +281,34 @@ FUNC float3 RecursiveTraceRay(float3 origin, float3 direction, float min_t, floa
 FUNC float3 TraceRay(float3 origin, float3 direction, float min_t, float max_t, int depth)
 {
 
-	Intersection intersect = ClosestIntersection(origin, direction, min_t, max_t);
-	Sphere closest_sphere = intersect.closest;
-	float closest_t = intersect.closest_t;
+	const Intersection intersect = ClosestIntersection(origin, direction, min_t, max_t);
+	const Triangle closest_triangle = intersect.closest;
+	const float closest_t = intersect.closest_t;
 
-	if (IsNull(closest_sphere))
+	if (IsNull(closest_triangle))
 		return sky_color;
 
-	float3 P = origin + (direction * closest_t);
-	float3 N = normalize(P - closest_sphere.center);
+	const float3 P = origin + (direction * closest_t);
+	const float3 N = normalize(closest_triangle.normal*-1);
 
-	float3 view = direction * -1.f;
+	const float3 view = direction * -1.f;
 
-	float3 lighting = ComputeLighting(P, N, view, closest_sphere.specular, inf);
-	float3 local_color = closest_sphere.color * lighting;
+	const float3 lighting = ComputeLighting(P, N, view, closest_triangle.specular, inf);
+	const float3 local_color = closest_triangle.color * lighting;
 
-	if (closest_sphere.metal <= 0 || depth <= 0)
+#ifndef REFLECTIONS
+	return local_color;
+#else
+	if (closest_triangle.metal <= 0 || depth <= 0)
 	{
 		return local_color;
 	}
 
-	float3 reflected_ray = ReflectRay(view, N);
-	float3 result = RecursiveTraceRay(P, reflected_ray, epsilon, inf, depth);
+	const float3 reflected_ray = ReflectRay(view, N);
+	const float3 result = RecursiveTraceRay(P, reflected_ray, epsilon, inf, depth);
 
-	return (local_color * (1.f - closest_sphere.metal)) + (result * closest_sphere.metal);
+	return (local_color * (1.f - closest_triangle.metal)) + (result * closest_triangle.metal);
+#endif
 }
 
 #ifdef GPU
@@ -329,61 +325,32 @@ FUNC float4 PixelTrace(Input input)
 	}
 #endif
 
-	spheres[0].center = float3(0, 0, 5);
-	spheres[0].color = float3(1, 0, 0);
-	spheres[0].radius = 1;
-	spheres[0].specular = 20;
-	spheres[0].metal = 0.2;
-
-	spheres[1].center = float3(2, 2, 4);
-	spheres[1].color = float3(0, 0, 1);
-	spheres[1].radius = 1;
-	spheres[1].specular = 20;
-	spheres[1].metal = 0.6;
-
-	spheres[2].center = float3(-2, 0, 4);
-	spheres[2].color = float3(0, 1, 0);
-	spheres[2].radius = 1;
-	spheres[2].specular = 20;
-	spheres[2].metal = 0.4;
-
-	spheres[3].center = float3(0, -5001, 0);
-	spheres[3].color = floor_color;
-	spheres[3].radius = 5000;
-	spheres[3].specular = 20;
-	spheres[3].metal = 0.5;
-
 	lights[0].position = float3(0, 0, 0);
 	lights[0].intensity = 0.2;
 	lights[0].type = 0;
-	lights[1].position = float3(2, 4, 0);
-	lights[1].intensity = 0.6;
+	lights[1].position = float3(0, 0, 0);
+	lights[1].intensity = 0.8;
 	lights[1].type = 1;
-	lights[2].position = float3(1, 4, 4);
-	lights[2].intensity = 0.2;
-	lights[2].type = 2;
-
-	float2 pixel_pos = float2(input.pos.x, input.pos.y);
 
 #ifdef GPU
-	pixel_pos.x = (input.pos.x - (canvas_size.x / 2));
-	pixel_pos.y = (input.pos.y - (canvas_size.y / 2));
-	pixel_pos.y *= -1;
+	const float2 pixel_pos = {(input.pos.x - (canvas_size.x / 2)), (input.pos.y - (canvas_size.y / 2)) * -1};
+#else
+	const float2 pixel_pos = {input.pos.x, input.pos.y};
 #endif
 
-	/*float pixel_size = 0.25;
-	float3 dir0 = CanvasToViewport(pixel_pos - float2(-pixel_size, -pixel_size));
-	float3 dir1 = CanvasToViewport(pixel_pos - float2(-pixel_size, pixel_size));
-	float3 dir2 = CanvasToViewport(pixel_pos - float2(pixel_size, -pixel_size));
-	float3 dir3 = CanvasToViewport(pixel_pos - float2(pixel_size, pixel_size));
+	/*const float pixel_size = 0.25;
+	const float3 dir0 = CanvasToViewport(pixel_pos - float2(-pixel_size, -pixel_size));
+	const float3 dir1 = CanvasToViewport(pixel_pos - float2(-pixel_size, pixel_size));
+	const float3 dir2 = CanvasToViewport(pixel_pos - float2(pixel_size, -pixel_size));
+	const float3 dir3 = CanvasToViewport(pixel_pos - float2(pixel_size, pixel_size));
 
-	float3 color0 = TraceRay(camera_pos, dir0, z_near, inf, REFLECTION_RECURSION);
-	float3 color1 = TraceRay(camera_pos, dir1, z_near, inf, REFLECTION_RECURSION);
-	float3 color2 = TraceRay(camera_pos, dir2, z_near, inf, REFLECTION_RECURSION);
-	float3 color3 = TraceRay(camera_pos, dir3, z_near, inf, REFLECTION_RECURSION);
+	const float3 color0 = TraceRay(camera_pos, dir0, z_near, inf, REFLECTION_RECURSION);
+	const float3 color1 = TraceRay(camera_pos, dir1, z_near, inf, REFLECTION_RECURSION);
+	const float3 color2 = TraceRay(camera_pos, dir2, z_near, inf, REFLECTION_RECURSION);
+	const float3 color3 = TraceRay(camera_pos, dir3, z_near, inf, REFLECTION_RECURSION);
 	float3 color = (color0 + color1 + color2 + color3) / 4;*/
 	
-	float3 dir = CanvasToViewport(pixel_pos);
+	const float3 dir = CanvasToViewport(pixel_pos);
 	float3 color = TraceRay(camera_pos, dir, z_near, inf, REFLECTION_RECURSION);
 
 	color = clamp(color * exposure, 0.f, 1.f);
@@ -393,6 +360,8 @@ FUNC float4 PixelTrace(Input input)
 
 	return float4(color.x, color.y, color.z, 1.f);
 }
+// ##################################
+#endif
 
 
 #ifndef GPU

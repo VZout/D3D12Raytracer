@@ -18,7 +18,9 @@
 #define dot(a, b) a.Dot(b)
 #define clamp(a, b, c) fm::clamp(a, b, c)
 #define REGISTER_B(i)
-
+#define int std::int32_t
+#define uint std::uint32_t
+#define ARRAY(type, name, num) std::array<type, num> name
 #define FUNC inline
 
 using pc_type = float;
@@ -37,6 +39,7 @@ struct Input
 #else
 #define constant static const
 #define REGISTER_B(i) : register(b##i)
+#define ARRAY(type, name, num) type name[num]
 #define FUNC 
 #endif
 
@@ -53,4 +56,33 @@ cbuffer RTProperties REGISTER_B(0)
 	float3 floor_color;
 	int use_cpu;
 	float exposure;
+	float3 padding;
 };
+
+struct Triangle
+{
+	float3 a;
+	float metal;
+	float3 b;
+	float specular;
+	float3 c;
+	float padding0;
+	float3 color;
+	float padding1;
+	float3 normal;
+	float padding2;
+};
+
+cbuffer RTGeometry REGISTER_B(1)
+{
+	//ARRAY(float3, vertices, 3);
+	//ARRAY(int, indices, 1);
+	ARRAY(Triangle, triangles, 10);
+	float num_triangles;
+};
+
+#ifndef GPU
+#undef int
+#undef uint
+#undef ARRAY()
+#endif

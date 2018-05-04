@@ -46,7 +46,8 @@ void CPURayTracer::TracePixel(Viewer* viewer, std::uint32_t _x, std::uint32_t _y
 	for (auto k = 0; k < d3d12_viewer->m_app.GetWidth() * d3d12_viewer->m_app.GetHeight(); k++)
 	{
 		Input input = { { (float)x - (d3d12_viewer->m_app.GetWidth() / 2), (float)y - (d3d12_viewer->m_app.GetHeight() / 2) } };
-		fm::vec4 color = PixelTrace(input);
+		//fm::vec4 color = PixelTrace(input);
+		fm::vec4 color = {1, 1, 1, 1 };
 		pixels[k] = color;
 
 		x++;
@@ -60,7 +61,7 @@ void CPURayTracer::TracePixel(Viewer* viewer, std::uint32_t _x, std::uint32_t _y
 	d3d12_viewer->UpdateRenderTexture(d3d12_viewer->m_cmd_list, d3d12_viewer->m_render_texture, (BYTE*)pixels);
 }
 
-void CPURayTracer::UpdateGeometry()
+void CPURayTracer::UpdateGeometry(Viewer* viewer, RTGeometry geomertry, bool all_frames)
 {
 }
 
@@ -68,7 +69,7 @@ void CPURayTracer::UpdateSettings(Viewer* viewer, RTProperties properties)
 {
 	m_properties = properties;
 
-	camera_pos = properties.camera_pos;
+	/*camera_pos = properties.camera_pos;
 	sky_color = properties.sky_color;
 	canvas_size = properties.canvas_size;
 	epsilon = properties.epsilon;
@@ -76,5 +77,5 @@ void CPURayTracer::UpdateSettings(Viewer* viewer, RTProperties properties)
 	z_near = properties.z_near;
 	gamma = properties.gamma;
 	exposure = properties.exposure;
-	floor_color = properties.floor_color;
+	floor_color = properties.floor_color;*/
 }

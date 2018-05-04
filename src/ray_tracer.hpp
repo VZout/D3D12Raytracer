@@ -26,7 +26,7 @@ public:
 	/*! Updates the scene geometry.
 	 * Can be very expensive depending on the ray tracer implementation.
 	 */
-	virtual void UpdateGeometry() = 0;
+	virtual void UpdateGeometry(Viewer* viewer, RTGeometry geometry, bool all_frames = false) = 0;
 	/*! Updates the raytracer's settings.
 	 * Should be called as little as possible since it may require uploading data to the GPU
 	 */

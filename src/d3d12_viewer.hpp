@@ -42,20 +42,27 @@ public:
 	void NewFrame() override;
 	void Present() override;
 
-	static const D3D_FEATURE_LEVEL m_feature_level = D3D_FEATURE_LEVEL_11_0;
+	static const D3D_FEATURE_LEVEL m_feature_level = D3D_FEATURE_LEVEL_12_0;
 	static const DXGI_FORMAT m_back_buffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	const std::string m_shader_model = "_5_0";
 	static const bool m_shader_optimization = true;
-	static const bool m_shader_debug = true;
-	static const bool m_disable_gpu_timeout = false;
+	static const bool m_shader_debug = false;
+	static const bool m_disable_gpu_timeout = true;
 	static const std::uint8_t num_back_buffers = 2;
 	static const bool m_use_vsync = false;
 	const float m_clear_color[4] = { 0, 0, 0, 255 };
 
+	/*! Used to fill a ImFGui window with adapter information */
+	void ImGui_RenderSystemInfo();
+
 private:
-	ComPtr<IDXGIFactory5> m_factory;
+	ComPtr<IDXGIFactory6> m_factory;
 	ComPtr<ID3D12Device3> m_device;
 	ComPtr<IDXGIAdapter4> m_adapter;
+#ifdef _DEBUG
+	DXGI_ADAPTER_DESC1 adapter_desc;
+	SYSTEM_INFO system_info;
+#endif
 	ComPtr<IDXGISwapChain4> m_swap_chain;
 	ComPtr<ID3D12CommandQueue> m_cmd_queue;
 #ifdef ENABLE_IMGUI

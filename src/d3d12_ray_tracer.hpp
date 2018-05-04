@@ -17,9 +17,10 @@ public:
 
 	void Initialize(Viewer* viewer) override;
 	void TracePixel(Viewer* viewer, std::uint32_t x, std::uint32_t y) override;
-	void UpdateGeometry() override;
+	void UpdateGeometry(Viewer* viewer, RTGeometry geometry, bool all_frames = false) override;
 	void UpdateSettings(Viewer* viewer, RTProperties properties) override;
 
 public:
-	std::pair<std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 2>, std::array<UINT8*, 2>> m_const_buffer;
+	std::pair<std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 2>, std::array<UINT8*, 2>> m_properties_const_buffer;
+	std::pair<std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 2>, std::array<UINT8*, 2>> m_geom_const_buffer;
 };

@@ -61,8 +61,10 @@ D3D12Viewer::D3D12Viewer(Application& app) : Viewer(app)
 
 D3D12Viewer::~D3D12Viewer()
 {
-	fence->Wait(0);
-	fence->Wait(1);
+	for (auto i = 0; i < num_back_buffers; i++)
+	{
+		fence->Wait(i);
+	}
 }
 
 bool first = true;
@@ -119,7 +121,7 @@ void D3D12Viewer::NewFrame()
 	auto teamp_heap = m_main_srv_desc_heap.Get();
 	m_cmd_list->SetDescriptorHeaps(1, &teamp_heap);
 
-	m_cmd_list->SetGraphicsRootDescriptorTable(1, m_main_srv_desc_heap->GetGPUDescriptorHandleForHeapStart());
+	m_cmd_list->SetGraphicsRootDescriptorTable(2, m_main_srv_desc_heap->GetGPUDescriptorHandleForHeapStart());
 
 	m_cmd_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 	m_cmd_list->IASetVertexBuffers(0, 1, &GET_VB_VIEW(screen_quad_vb));
@@ -162,7 +164,7 @@ void D3D12Viewer::SetupD3D12()
 	// Setup debug layer
 	if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug_controller))))
 	{
-		//debug_controller->SetEnableGPUBasedValidation(true);
+		debug_controller->SetEnableGPUBasedValidation(true);
 		debug_controller->EnableDebugLayer();
 	}
 #endif
@@ -282,11 +284,13 @@ void D3D12Viewer::FindCompatibleAdapter()
 {
 	assert(m_factory);
 
-	IDXGIAdapter1* adapter = nullptr;
 	std::uint8_t adapter_idx = 0;
+	DXGI_GPU_PREFERENCE gpu_preference = DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE;
+	IDXGIAdapter1* adapter = nullptr;
 
 	// Find a compatible adapter.
 	while (m_factory->EnumAdapters1(adapter_idx, &adapter) != DXGI_ERROR_NOT_FOUND)
+	//while (m_factory->EnumAdapterByGpuPreference(adapter_idx, gpu_preference, IID_PPV_ARGS(&adapter)) != DXGI_ERROR_NOT_FOUND)
 	{
 		DXGI_ADAPTER_DESC1 desc;
 		adapter->GetDesc1(&desc);
@@ -313,6 +317,10 @@ void D3D12Viewer::FindCompatibleAdapter()
 		throw std::runtime_error("No comaptible adapter found.");
 	}
 
+#ifdef _DEBUG
+	adapter->GetDesc1(&adapter_desc);
+	GetNativeSystemInfo(&system_info);
+#endif
 	// Upcast IDXGIAdapter1 TO IDXGIAdapter4. i Believe this is allowed.
 	m_adapter = static_cast<IDXGIAdapter4*>(adapter);
 }
@@ -329,6 +337,41 @@ void D3D12Viewer::CreateDevice()
 	{
 		throw std::runtime_error("Failed to create device.");
 	}
+}
+
+void D3D12Viewer::ImGui_RenderSystemInfo()
+{
+#ifdef _DEBUG
+	if (ImGui::CollapsingHeader("System Information"))
+	{
+		ImGui::Text("Page Size: %i", system_info.dwPageSize);
+		ImGui::Text("Active Processor Mask: %i", system_info.dwActiveProcessorMask);
+		ImGui::Text("Processor Count: %i", system_info.dwNumberOfProcessors);
+
+		switch (system_info.wProcessorArchitecture)
+		{
+		case 9: ImGui::Text("Processor Architecture: %s", "PROCESSOR_ARCHITECTURE_AMD64"); break;
+		case 5: ImGui::Text("Processor Architecture: %s", "PROCESSOR_ARCHITECTURE_ARM"); break;
+		case 6: ImGui::Text("Processor Architecture: %s", "PROCESSOR_ARCHITECTURE_IA64"); break;
+		case 0: ImGui::Text("Processor Architecture: %s", "PROCESSOR_ARCHITECTURE_INTEL"); break;
+		default: ImGui::Text("Processor Architecture: %s", "Unknown"); break;
+		}
+	}
+
+	if (ImGui::CollapsingHeader("Graphics Adapter Information"))
+	{
+		std::wstring wdesc(adapter_desc.Description);
+		std::string desc = std::string(wdesc.begin(), wdesc.end());
+
+		ImGui::Text("Description: %s", desc.c_str());
+		ImGui::Text("Vendor ID: %i", adapter_desc.VendorId);
+		ImGui::Text("Device ID: %i", adapter_desc.DeviceId);
+		ImGui::Text("Subsystem ID: %i", adapter_desc.SubSysId);
+		ImGui::Text("Dedicated Video Memory: %i", adapter_desc.DedicatedVideoMemory);
+		ImGui::Text("Dedicated System Memory: %i", adapter_desc.DedicatedSystemMemory);
+		ImGui::Text("Shared System Memory: %i", adapter_desc.SharedSystemMemory);
+	}
+#endif
 }
 
 ComPtr<ID3D12PipelineState> D3D12Viewer::CreateBasicPipelineState(ComPtr<ID3D12RootSignature>& root_signature)
@@ -414,9 +457,10 @@ ComPtr<ID3D12RootSignature> D3D12Viewer::CreateBasicRootSignature()
 	CD3DX12_DESCRIPTOR_RANGE desc_range;
 	desc_range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
 
-	std::array<CD3DX12_ROOT_PARAMETER, 2> parameters;
+	std::array<CD3DX12_ROOT_PARAMETER, 3> parameters;
 	parameters[0].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
-	parameters[1].InitAsDescriptorTable(1, &desc_range, D3D12_SHADER_VISIBILITY_PIXEL);
+	parameters[1].InitAsConstantBufferView(1, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+	parameters[2].InitAsDescriptorTable(1, &desc_range, D3D12_SHADER_VISIBILITY_PIXEL);
 
 	CD3DX12_ROOT_SIGNATURE_DESC root_signature_desc;
 	root_signature_desc.Init(parameters.size(),
