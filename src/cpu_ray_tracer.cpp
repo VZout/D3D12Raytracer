@@ -61,7 +61,7 @@ void CPURayTracer::TracePixel(Viewer* viewer, std::uint32_t _x, std::uint32_t _y
 	d3d12_viewer->UpdateRenderTexture(d3d12_viewer->m_cmd_list, d3d12_viewer->m_render_texture, (BYTE*)pixels);
 }
 
-void CPURayTracer::UpdateGeometry(Viewer* viewer, RTGeometry geomertry, bool all_frames)
+void CPURayTracer::UpdateGeometry(Viewer* viewer, std::array<Triangle, NUM_GEOMETRY> geometry, bool all_frames)
 {
 }
 

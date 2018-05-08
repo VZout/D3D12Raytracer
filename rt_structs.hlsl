@@ -62,23 +62,38 @@ cbuffer RTProperties REGISTER_B(0)
 struct Triangle
 {
 	float3 a;
-	float metal;
+	float material_idx;
 	float3 b;
-	float specular;
+	float u;
 	float3 c;
-	float padding0;
-	float3 color;
-	float padding1;
+	float v;
 	float3 normal;
-	float padding2;
+	float padding3;
 };
 
-cbuffer RTGeometry REGISTER_B(1)
+struct Material
+{
+	float3 color;
+	float metal;
+	float3 padding;
+	float specular;
+};
+
+/*cbuffer RTGeometry REGISTER_B(1)
 {
 	//ARRAY(float3, vertices, 3);
-	//ARRAY(int, indices, 1);
-	ARRAY(Triangle, triangles, 10);
+	ARRAY(Triangle, triangles, 4090);
 	float num_triangles;
+};*/
+
+static float num_triangles = 30;
+#ifdef GPU
+StructuredBuffer<Triangle> triangles : register(t1);
+#endif
+
+cbuffer RTMaterials REGISTER_B(1)
+{
+	ARRAY(Material, materials, 3);
 };
 
 #ifndef GPU

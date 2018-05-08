@@ -64,7 +64,7 @@ Application::Application(HINSTANCE instance, int cmd_show, std::string const& na
 	}
 
 	SetWindowLongPtr(m_handle, GWLP_USERDATA, (LONG_PTR)this);
-	SetWindowLong(m_handle, GWL_EXSTYLE, GetWindowLong(m_handle, GWL_EXSTYLE) | WS_EX_LAYERED);
+	//SetWindowLong(m_handle, GWL_EXSTYLE, GetWindowLong(m_handle, GWL_EXSTYLE) | WS_EX_LAYERED);
 
 	ShowWindow(m_handle, cmd_show);
 	UpdateWindow(m_handle);

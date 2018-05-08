@@ -4,6 +4,8 @@
 #include "../rt_structs.hlsl"
 #include "../raytracer.ps"
 
+#define NUM_GEOMETRY 30 
+
 struct Texture;
 class Viewer;
 
@@ -26,7 +28,7 @@ public:
 	/*! Updates the scene geometry.
 	 * Can be very expensive depending on the ray tracer implementation.
 	 */
-	virtual void UpdateGeometry(Viewer* viewer, RTGeometry geometry, bool all_frames = false) = 0;
+	virtual void UpdateGeometry(Viewer* viewer, std::array<Triangle, NUM_GEOMETRY> geometry, bool all_frames = false) = 0;
 	/*! Updates the raytracer's settings.
 	 * Should be called as little as possible since it may require uploading data to the GPU
 	 */

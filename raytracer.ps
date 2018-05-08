@@ -4,8 +4,8 @@
 
 #include "rt_structs.hlsl"
 
-#define REFLECTIONS
-#define REFLECTION_RECURSION 2
+//#define REFLECTIONS
+#define REFLECTION_RECURSION 0
 
 #ifdef GPU
 Texture2D in_texture : register(t0);
@@ -52,17 +52,22 @@ static const float inf = 9999999;
 Triangle MakeNull()
 {
 	Triangle retval;
-	retval.metal = -inf;
+	retval.a.x = -inf;
 	return retval;
 }
 
 bool IsNull(Triangle tri)
 {
-	return tri.metal == -inf;
+	return tri.a.x == -inf;
 }
 
 constant int num_lights = 2;
 static Light lights[num_lights];
+
+FUNC Material GetMaterial(int idx)
+{
+	return materials[idx];
+}
 
 FUNC float3 CanvasToViewport(float2 pos)
 {
@@ -77,7 +82,7 @@ float3 ReflectRay(float3 v1, float3 v2);
 #define AMBIENT 0
 #define POINT 1
 
-FUNC float3 ComputeLighting(float3 pont, float3 N, float3 V, float specular, float max_t)
+FUNC float3 ComputeLighting(float3 pont, float3 N, float3 V, Material material, float max_t)
 {
 	float intensity = 0;
 	const float length_n = length(N);
@@ -97,6 +102,7 @@ FUNC float3 ComputeLighting(float3 pont, float3 N, float3 V, float specular, flo
 		if (light.type == POINT)
 		{
 			vec_l = light.position - pont;
+			max_t = 1.0f;
 		}
 		else // Light.DIRECTIONAL
 		{
@@ -104,7 +110,7 @@ FUNC float3 ComputeLighting(float3 pont, float3 N, float3 V, float specular, flo
 		}
 
 		// Shadow check
-		const Intersection intersect = ClosestIntersection(pont, normalize(vec_l), epsilon, length(vec_l));
+		const Intersection intersect = ClosestIntersection(pont, vec_l, epsilon, max_t);
 		if (!IsNull(intersect.closest))
 			continue;
 
@@ -116,13 +122,14 @@ FUNC float3 ComputeLighting(float3 pont, float3 N, float3 V, float specular, flo
 			//intensity += light.intensity * n_dot_l;
 		}
 
-		if (specular != -1)
+		if (material.specular != -1)
 		{
 			const float3 vec_r = ReflectRay(vec_l, N);
+			//const float3 vec_r = mul(2.0*dot(N, vec_l), N) - vec_l;
 			const float r_dot_v = dot(vec_r, V);
 			if (r_dot_v > 0)
 			{
-				intensity += light.intensity * pow(r_dot_v / (length(vec_r) * length_v), specular);
+				intensity += light.intensity * pow(r_dot_v / (length(vec_r) * length_v), material.specular);
 			}
 		}
 	}
@@ -160,7 +167,7 @@ FUNC Intersection ClosestIntersection(float3 origin, float3 direction, float min
 	float closest_t = inf;
 	Triangle closest_triangle = MakeNull();
 
-	[unroll(num_triangles)]
+//	[unroll(num_triangles)]
 	for (int i = 0; i < num_triangles; i++)
 	{
 		const float2 ts = IntersectRayTriangle(origin, direction, triangles[i]);
@@ -221,20 +228,21 @@ FUNC float3 RecursiveTraceRay(float3 origin, float3 direction, float min_t, floa
 			refs[depth].ref_ray = reflected_ray;
 			refs[depth].ref_point = origin;
 			refs[depth].l_color = reflected_color;
-			refs[depth].metal = closest_triangle.metal;
 			refs[depth].end = true;
 			continue;
 		}
 
 		const float3 P = origin + (reflected_ray * closest_t);
-		const float3 N = normalize(closest_triangle.normal*-1);
+		const float3 N = normalize(closest_triangle.normal);
 
 		const float3 view = reflected_ray * -1.f;
 
-		const float3 lighting = ComputeLighting(P, N, view, closest_triangle.specular, inf);
-		const float3 local_color = closest_triangle.color * lighting;
+		const Material material = GetMaterial(closest_triangle.material_idx);
 
-		if (closest_triangle.metal <= 0 || depth <= 0)
+		const float3 lighting = ComputeLighting(P, N, view, material, inf);
+		const float3 local_color = material.color * lighting;
+
+		if (material.metal <= 0 || depth <= 0)
 		{
 			reflected_color = local_color;
 
@@ -242,7 +250,7 @@ FUNC float3 RecursiveTraceRay(float3 origin, float3 direction, float min_t, floa
 			refs[depth].ref_ray = reflected_ray;
 			refs[depth].ref_point = P;
 			refs[depth].l_color = local_color;
-			refs[depth].metal = closest_triangle.metal;
+			refs[depth].metal = material.metal;
 			refs[depth].end = true;
 			continue;
 		}
@@ -254,7 +262,7 @@ FUNC float3 RecursiveTraceRay(float3 origin, float3 direction, float min_t, floa
 		refs[depth].ref_ray = reflected_ray;
 		refs[depth].ref_point = P;
 		refs[depth].l_color = local_color;
-		refs[depth].metal = closest_triangle.metal;
+		refs[depth].metal = material.metal;
 		refs[depth].end = false;
 	}
 
@@ -289,17 +297,19 @@ FUNC float3 TraceRay(float3 origin, float3 direction, float min_t, float max_t, 
 		return sky_color;
 
 	const float3 P = origin + (direction * closest_t);
-	const float3 N = normalize(closest_triangle.normal*-1);
+	const float3 N = normalize(closest_triangle.normal);
 
 	const float3 view = direction * -1.f;
 
-	const float3 lighting = ComputeLighting(P, N, view, closest_triangle.specular, inf);
-	const float3 local_color = closest_triangle.color * lighting;
+	const Material material = GetMaterial(closest_triangle.material_idx);
+
+	const float3 lighting = ComputeLighting(P, N, view, material, inf);
+	const float3 local_color = material.color * lighting;
 
 #ifndef REFLECTIONS
 	return local_color;
 #else
-	if (closest_triangle.metal <= 0 || depth <= 0)
+	if (material.metal <= 0 || depth <= 0)
 	{
 		return local_color;
 	}
@@ -307,7 +317,7 @@ FUNC float3 TraceRay(float3 origin, float3 direction, float min_t, float max_t, 
 	const float3 reflected_ray = ReflectRay(view, N);
 	const float3 result = RecursiveTraceRay(P, reflected_ray, epsilon, inf, depth);
 
-	return (local_color * (1.f - closest_triangle.metal)) + (result * closest_triangle.metal);
+	return (local_color * (1.f - material.metal)) + (result * material.metal);
 #endif
 }
 
@@ -325,10 +335,10 @@ FUNC float4 PixelTrace(Input input)
 	}
 #endif
 
-	lights[0].position = float3(0, 0, 0);
+	lights[0].position = float3(0, 0, 3);
 	lights[0].intensity = 0.2;
 	lights[0].type = 0;
-	lights[1].position = float3(0, 0, 0);
+	lights[1].position = float3(0, 2, 0);
 	lights[1].intensity = 0.8;
 	lights[1].type = 1;
 
@@ -358,6 +368,7 @@ FUNC float4 PixelTrace(Input input)
 	color.y = pow(color.y, 1.f / gamma);
 	color.z = pow(color.z, 1.f / gamma);
 
+	//return float4(triangles[0].material_idx/2, 0, 0, 1.f);
 	return float4(color.x, color.y, color.z, 1.f);
 }
 // ##################################
