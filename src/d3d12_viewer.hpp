@@ -42,9 +42,9 @@ public:
 	void NewFrame() override;
 	void Present() override;
 
-	static const D3D_FEATURE_LEVEL m_feature_level = D3D_FEATURE_LEVEL_11_0;
+	static const D3D_FEATURE_LEVEL m_feature_level = D3D_FEATURE_LEVEL_12_1;
 	static const DXGI_FORMAT m_back_buffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	const std::string m_shader_model = "_5_0";
+	const std::string m_shader_model = "_5_1";
 	static const bool m_shader_optimization = true;
 	static const bool m_shader_debug = true;
 	static const bool m_disable_gpu_timeout = true;
@@ -130,7 +130,11 @@ private:
 	template<const std::uint16_t N>
 	[[nodiscard]] std::pair<std::array<ComPtr<ID3D12Resource>, N>, std::array<UINT8*, N>> CreateStructuredBuffer(size_t unaligned_size);
 	template<const std::uint16_t N>
+	[[nodiscard]] std::pair<std::array<ComPtr<ID3D12Resource>, N>, std::array<UINT8*, N>> CreateByteAddressBuffer(size_t unaligned_size);
+	template<const std::uint16_t N>
 	[[nodiscard]] void CreateStructuredBufferSRV(std::array<ComPtr<ID3D12Resource>, N> buffer, CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle, int count, int stride);
+	template<const std::uint16_t N>
+	[[nodiscard]] void CreateByteAddressBufferSRV(std::array<ComPtr<ID3D12Resource>, N> buffer, CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle, int count);
 	[[nodiscard]] RenderTexture* CreateRenderTexture(unsigned int width, unsigned int height, DXGI_FORMAT format, CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle);
 	void UpdateRenderTexture(ComPtr<ID3D12GraphicsCommandList> cmd_list, RenderTexture* texture, BYTE* data);
 };
@@ -323,6 +327,40 @@ template<const std::uint16_t N>
 }
 
 template<const std::uint16_t N>
+[[nodiscard]] std::pair<std::array<ComPtr<ID3D12Resource>, N>, std::array<UINT8*, N>> D3D12Viewer::CreateByteAddressBuffer(size_t unaligned_size)
+{
+	unsigned int mul_size = (unaligned_size + 255) & ~255;
+
+	std::array<ComPtr<ID3D12Resource>, N> const_buffers;
+	std::array<UINT8*, N> const_buffer_adresses;
+
+	for (unsigned int i = 0; i < N; ++i)
+	{
+		HRESULT hr = m_device->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), // this heap will be used to upload the constant buffer data
+			D3D12_HEAP_FLAG_NONE, // no flags
+			&CD3DX12_RESOURCE_DESC::Buffer(mul_size), // size of the resource heap. Must be a multiple of 64KB for single-textures and constant buffers
+			D3D12_RESOURCE_STATE_GENERIC_READ, // will be data that is read from so we keep it in the generic read state
+			nullptr, // we do not have use an optimized clear value for constant buffers
+			IID_PPV_ARGS(&const_buffers[i]));
+		const_buffers[i]->SetName(L"byte Buffer Upload Resource Heap");
+		if (FAILED(hr))
+		{
+			throw std::runtime_error("Failed to create byte buffer resource");
+		}
+
+		CD3DX12_RANGE readRange(0, 0);
+		hr = const_buffers[i]->Map(0, &readRange, reinterpret_cast<void**>(&const_buffer_adresses[i]));
+		if (FAILED(hr))
+		{
+			throw std::runtime_error("Failed to map byte buffer");
+		}
+	}
+
+	return { const_buffers, const_buffer_adresses };
+}
+
+template<const std::uint16_t N>
 [[nodiscard]] void D3D12Viewer::CreateStructuredBufferSRV(std::array<ComPtr<ID3D12Resource>, N> buffer, CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle, int count, int stride)
 {
 	for (auto i = 0; i < N; i++)
@@ -334,6 +372,23 @@ template<const std::uint16_t N>
 		srv_desc.Buffer.NumElements = count;
 		srv_desc.Buffer.StructureByteStride = stride;
 		srv_desc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+		m_device->CreateShaderResourceView(buffer[i].Get(), &srv_desc, srv_handle);
+		srv_handle.Offset(1, m_cbv_srv_uav_increment_size);
+	}
+}
+
+template<const std::uint16_t N>
+[[nodiscard]] void D3D12Viewer::CreateByteAddressBufferSRV(std::array<ComPtr<ID3D12Resource>, N> buffer, CD3DX12_CPU_DESCRIPTOR_HANDLE srv_handle, int count)
+{
+	for (auto i = 0; i < N; i++)
+	{
+		D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
+		srv_desc.Format = DXGI_FORMAT_R32_TYPELESS;
+		srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srv_desc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+		srv_desc.Buffer.NumElements = count;
+		srv_desc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
 
 		m_device->CreateShaderResourceView(buffer[i].Get(), &srv_desc, srv_handle);
 		srv_handle.Offset(1, m_cbv_srv_uav_increment_size);

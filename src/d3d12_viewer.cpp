@@ -35,7 +35,7 @@ D3D12Viewer::D3D12Viewer(Application& app) : Viewer(app)
 	m_pipeline = CreateBasicPipelineState(m_root_signature);
 
 	// Create Shader resource view heap to store the raytraced texture.
-	m_main_srv_desc_heap = CreateSRVHeap(3);
+	m_main_srv_desc_heap = CreateSRVHeap(1);
 
 	// Create Screen Squad Vertex Buffer;
 	std::vector<fm::vec3> vertices =
@@ -121,7 +121,7 @@ void D3D12Viewer::NewFrame()
 	auto teamp_heap = m_main_srv_desc_heap.Get();
 	m_cmd_list->SetDescriptorHeaps(1, &teamp_heap);
 
-	m_cmd_list->SetGraphicsRootDescriptorTable(2, m_main_srv_desc_heap->GetGPUDescriptorHandleForHeapStart());
+	m_cmd_list->SetGraphicsRootDescriptorTable(4, m_main_srv_desc_heap->GetGPUDescriptorHandleForHeapStart());
 
 	m_cmd_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 	m_cmd_list->IASetVertexBuffers(0, 1, &GET_VB_VIEW(screen_quad_vb));
@@ -154,9 +154,7 @@ void D3D12Viewer::Present()
 	fence->Signal(m_cmd_queue, m_frame_idx);
 	
 	// Present the frame.
-	OutputDebugString("Begin present");
 	m_swap_chain->Present(m_use_vsync, 0);
-	OutputDebugString("Begin present\n");
 	m_frame_idx = static_cast<std::uint8_t>(m_swap_chain->GetCurrentBackBufferIndex());
 }
 
@@ -166,8 +164,8 @@ void D3D12Viewer::SetupD3D12()
 	// Setup debug layer
 	if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug_controller))))
 	{
-		//debug_controller->SetEnableGPUBasedValidation(true);
-		//debug_controller->EnableDebugLayer();
+		debug_controller->SetEnableGPUBasedValidation(true);
+		debug_controller->EnableDebugLayer();
 	}
 #endif
 
@@ -343,7 +341,7 @@ void D3D12Viewer::CreateDevice()
 
 void D3D12Viewer::ImGui_RenderSystemInfo()
 {
-#ifdef _DEBUG/*
+#ifdef _DEBUG
 	if (ImGui::CollapsingHeader("System Information"))
 	{
 		ImGui::Text("Page Size: %i", system_info.dwPageSize);
@@ -372,7 +370,7 @@ void D3D12Viewer::ImGui_RenderSystemInfo()
 		ImGui::Text("Dedicated Video Memory: %i", adapter_desc.DedicatedVideoMemory);
 		ImGui::Text("Dedicated System Memory: %i", adapter_desc.DedicatedSystemMemory);
 		ImGui::Text("Shared System Memory: %i", adapter_desc.SharedSystemMemory);
-	}*/
+	}
 #endif
 }
 
@@ -459,10 +457,12 @@ ComPtr<ID3D12RootSignature> D3D12Viewer::CreateBasicRootSignature()
 	CD3DX12_DESCRIPTOR_RANGE desc_range;
 	desc_range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0);
 
-	std::array<CD3DX12_ROOT_PARAMETER, 3> parameters;
+	std::array<CD3DX12_ROOT_PARAMETER, 5> parameters;
 	parameters[0].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
 	parameters[1].InitAsConstantBufferView(1, 0, D3D12_SHADER_VISIBILITY_PIXEL);
-	parameters[2].InitAsDescriptorTable(1, &desc_range, D3D12_SHADER_VISIBILITY_PIXEL);
+	parameters[2].InitAsShaderResourceView(3, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+	parameters[3].InitAsShaderResourceView(4, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+	parameters[4].InitAsDescriptorTable(1, &desc_range, D3D12_SHADER_VISIBILITY_PIXEL);
 
 	CD3DX12_ROOT_SIGNATURE_DESC root_signature_desc;
 	root_signature_desc.Init(parameters.size(),

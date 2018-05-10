@@ -56,6 +56,38 @@ Triangle MakeNull()
 	return retval;
 }
 
+// Load three 16 bit indices from a byte addressed buffer.
+uint3 Load3x16BitIndices(uint offsetBytes)
+{
+    uint3 retval;
+
+    // ByteAdressBuffer loads must be aligned at a 4 byte boundary.
+    // Since we need to read three 16 bit indices: { 0, 1, 2 } 
+    // aligned at a 4 byte boundary as: { 0 1 } { 2 0 } { 1 2 } { 0 1 } ...
+    // we will load 8 bytes (~ 4 indices { a b | c d }) to handle two possible index triplet layouts,
+    // based on first index's offsetBytes being aligned at the 4 byte boundary or not:
+    //  Aligned:     { 0 1 | 2 - }
+    //  Not aligned: { - 0 | 1 2 }
+    const uint dwordAlignedOffset = offsetBytes & ~3;    
+    const uint2 four16BitIndices = indices.Load2(dwordAlignedOffset);
+ 
+    // Aligned: { 0 1 | 2 - } => retrieve first three 16bit indices
+    if (dwordAlignedOffset == offsetBytes)
+    {
+        retval.x = four16BitIndices.x & 0xffff;
+        retval.y = (four16BitIndices.x >> 16) & 0xffff;
+        retval.z = four16BitIndices.y & 0xffff;
+    }
+    else // Not aligned: { - 0 | 1 2 } => retrieve last three 16bit indices
+    {
+        retval.x = (four16BitIndices.x >> 16) & 0xffff;
+        retval.y = four16BitIndices.y & 0xffff;
+        retval.z = (four16BitIndices.y >> 16) & 0xffff;
+    }
+
+    return retval;
+}
+
 bool IsNull(Triangle tri)
 {
 	return tri.a.x == -inf;
@@ -167,19 +199,32 @@ FUNC Intersection ClosestIntersection(float3 origin, float3 direction, float min
 	float closest_t = inf;
 	Triangle closest_triangle = MakeNull();
 
-//	[unroll(num_triangles)]
-	for (int i = 0; i < num_triangles; i++)
+	[unroll(num_indices/3)]
+	for (int i = 0; i < num_indices; i += 3)
 	{
-		const float2 ts = IntersectRayTriangle(origin, direction, triangles[i]);
+		const uint3 tri_vertices = Load3x16BitIndices(i*2);
+		const Vertex v0 = vertices[tri_vertices.x];
+		const Vertex v1 = vertices[tri_vertices.y];
+		const Vertex v2 = vertices[tri_vertices.z];
+
+		Triangle tri;
+		tri.a = v0.position;
+		tri.b = v1.position;
+		tri.c = v2.position;
+		tri.normal = v0.normal;
+		tri.material_idx = v1.material_idx;
+		
+
+		const float2 ts = IntersectRayTriangle(origin, direction, tri);
 		if (ts[0] < closest_t && ts[0] > min_t && ts[0] < max_t)
 		{
 			closest_t = ts[0];
-			closest_triangle = triangles[i];
+			closest_triangle = tri;
 		}
 		if (ts[1] < closest_t && ts[1] > min_t && ts[1] < max_t)
 		{
 			closest_t = ts[1];
-			closest_triangle = triangles[i];
+			closest_triangle = tri;
 		}
 	}
 
@@ -368,7 +413,7 @@ FUNC float4 PixelTrace(Input input)
 	color.y = pow(color.y, 1.f / gamma);
 	color.z = pow(color.z, 1.f / gamma);
 
-	//return float4(triangles[0].material_idx/2, 0, 0, 1.f);
+	//return float4(indices[0].index, 0, 0, 1.f);
 	return float4(color.x, color.y, color.z, 1.f);
 }
 // ##################################

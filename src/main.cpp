@@ -23,19 +23,6 @@ static bool rt_use_cpu = false;
 static float rt_gamma = 2.2f; 
 static float rt_exposure = 1.f;
 
-/*
-int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
-{
-	auto app = std::make_unique<Application>(instance, cmd_show, "Raytracer", 600, 600);
-	auto viewer = std::make_unique<D3D12Viewer>(*app);
-	//auto ray_tracer = std::make_shared<D3D12RayTracer>();
-	while (app->IsRunning())
-	{
-	}
-	return 0;
-}*/
-#define SUCKIT
-#ifdef SUCKIT
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 {
 	auto app = std::make_unique<Application>(instance, cmd_show, "Raytracer", 600, 600);
@@ -64,19 +51,8 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 	std::chrono::time_point<std::chrono::high_resolution_clock> last_sec;
 	std::chrono::time_point<std::chrono::high_resolution_clock> last_frame;
 
-	std::vector<fm::vec3> vertices =
-	{
-		{ -1, 0, 0 },
-		{ 1, 0, 0 },
-		{ 0, 1, 0 },
-	};
-
-	std::vector<std::int32_t> indices =
-	{
-		0, 1, 2
-	};
-	 
-	std::array<Triangle, NUM_GEOMETRY> scene_triangles;
+	std::vector<Vertex> scene_vertices;
+	std::vector<INDICES_TYPE> scene_indices;
 	RTMaterials materials;
 
 	materials.materials[0].color = { 1, 1, 1 };
@@ -93,97 +69,32 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 		rlr::Model* model = new rlr::Model();
 		rlr::Load(*model, "scene.fbx");
 
-		volatile int triangle = 0;
+		int vertex_offset = 0;
 		for (auto m = 0; m < model->meshes.size(); m++)
 		{
-			for (auto i = 0; i < model->meshes[m].indices.size(); i += 3)
+			for (auto i = 0; i < model->meshes[m].vertices.size(); i++)
 			{
-				auto v0 = model->meshes[m].vertices[model->meshes[m].indices[i]];
-				auto v1 = model->meshes[m].vertices[model->meshes[m].indices[i+1]];
-				auto v2 = model->meshes[m].vertices[model->meshes[m].indices[i+2]];
+				auto pv = model->meshes[m].vertices[i];
+				Vertex v;
+				v.material_idx = m % 3;
+				v.normal = pv.m_normal;
+				v.position = pv.m_pos;
+				v.uv = pv.m_texCoord;
 
-				scene_triangles[triangle].a = v0.m_pos;
-				scene_triangles[triangle].b = v1.m_pos;
-				scene_triangles[triangle].c = v2.m_pos;
-				scene_triangles[triangle].material_idx = m % 3;
-				scene_triangles[triangle].u = 1;
-				scene_triangles[triangle].v = 1;
-				scene_triangles[triangle].normal = (v0.m_normal + v1.m_normal, v2.m_normal).Normalized();
-
-				triangle++;
+				scene_vertices.push_back(v);
 			}
+
+			for (auto i = 0; i < model->meshes[m].indices.size(); i++)
+			{
+				scene_indices.push_back((int)model->meshes[m].indices[i] + vertex_offset);
+			}
+			vertex_offset += model->meshes[m].vertices.size();
 		}
 	}
+	scene_vertices.resize(NUM_VERTICES);
 
-	/*{
-		float rect_size = 4.0f;
-		float depth = 4;
-		// #### BACK WALL
-		// bottom left tri
-		scene_triangles.triangles[0].a = { -rect_size, rect_size, depth };
-		scene_triangles.triangles[0].b = { -rect_size, -rect_size, depth };
-		scene_triangles.triangles[0].c = { rect_size, -rect_size, depth };
-		scene_triangles.triangles[0].normal = { 0, 0, 1 };
-		// top right tri
-		scene_triangles.triangles[1].a = { -rect_size, rect_size, depth };
-		scene_triangles.triangles[1].b = { rect_size, rect_size, depth };
-		scene_triangles.triangles[1].c = { rect_size, -rect_size, depth };
-		scene_triangles.triangles[1].normal = { 0, 0, 1 };
-
-		// #### TOP WALL
-		// bottom left tri
-		scene_triangles.triangles[2].a = { -rect_size, depth, rect_size };
-		scene_triangles.triangles[2].b = { -rect_size, depth, -rect_size };
-		scene_triangles.triangles[2].c = { rect_size, depth, -rect_size };
-		scene_triangles.triangles[2].normal = { 0, 1, 0 };
-		// top right tri
-		scene_triangles.triangles[3].a = { -rect_size, depth, rect_size };
-		scene_triangles.triangles[3].b = { rect_size, depth, rect_size };
-		scene_triangles.triangles[3].c = { rect_size, depth, -rect_size };
-		scene_triangles.triangles[3].normal = { 0, 1, 0 };
-
-		// #### BOTTOM WALL
-		// bottom left tri
-		scene_triangles.triangles[4].a = { -rect_size, -depth, rect_size };
-		scene_triangles.triangles[4].b = { -rect_size, -depth, -rect_size };
-		scene_triangles.triangles[4].c = { rect_size, -depth, -rect_size };
-		scene_triangles.triangles[4].normal = { 0, -1, 0 };
-		// top right tri
-		scene_triangles.triangles[5].a = { -rect_size, -depth, rect_size };
-		scene_triangles.triangles[5].b = { rect_size, -depth, rect_size };
-		scene_triangles.triangles[5].c = { rect_size, -depth, -rect_size };
-		scene_triangles.triangles[5].normal = { 0, -1, 0 };
-
-		// #### RIGHT WALL
-		// bottom left tri
-		scene_triangles.triangles[6].a = { depth, -rect_size, rect_size };
-		scene_triangles.triangles[6].b = { depth, -rect_size, -rect_size };
-		scene_triangles.triangles[6].c = { depth, rect_size, -rect_size };
-		scene_triangles.triangles[6].normal = { 1, 0, 0 };
-		scene_triangles.triangles[6].material_idx = 2;
-		// top right tri
-		scene_triangles.triangles[7].a = { depth, -rect_size, rect_size };
-		scene_triangles.triangles[7].b = { depth, rect_size, rect_size };
-		scene_triangles.triangles[7].c = { depth, rect_size, -rect_size };
-		scene_triangles.triangles[7].normal = { 1, 0, 0 };
-		scene_triangles.triangles[7].material_idx = 2;
-
-		// #### LEFT WALL
-		// bottom left tri
-		scene_triangles.triangles[8].a = { -depth, -rect_size, rect_size };
-		scene_triangles.triangles[8].b = { -depth, -rect_size, -rect_size };
-		scene_triangles.triangles[8].c = { -depth, rect_size, -rect_size };
-		scene_triangles.triangles[8].normal = { -1, 0, 0 };
-		scene_triangles.triangles[8].material_idx = 1;
-		// top right tri
-		scene_triangles.triangles[9].a = { -depth, -rect_size, rect_size };
-		scene_triangles.triangles[9].b = { -depth, rect_size, rect_size };
-		scene_triangles.triangles[9].c = { -depth, rect_size, -rect_size };
-		scene_triangles.triangles[9].normal = { -1, 0, 0 };
-		scene_triangles.triangles[9].material_idx = 1;
-	}*/
-
-	ray_tracer->UpdateGeometry(viewer.get(), scene_triangles, true);
+	ray_tracer->UpdateVertices(viewer.get(), scene_vertices, true);
+	ray_tracer->UpdateIndices(viewer.get(), scene_indices, true);
 	ray_tracer->UpdateMaterials(viewer.get(), materials, materials.materials.size(), true);
 
 	while (app->IsRunning())
@@ -277,4 +188,3 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 
 	return 0;
 }
-#endif

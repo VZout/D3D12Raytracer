@@ -71,6 +71,21 @@ struct Triangle
 	float padding3;
 };
 
+struct Vertex
+{
+	float3 position;
+	int material_idx;
+	float3 normal;
+	float padding0;
+	float2 uv;
+	float2 padding1;
+};
+
+struct Index
+{
+	int index;
+};
+
 struct Material
 {
 	float3 color;
@@ -79,16 +94,10 @@ struct Material
 	float specular;
 };
 
-/*cbuffer RTGeometry REGISTER_B(1)
-{
-	//ARRAY(float3, vertices, 3);
-	ARRAY(Triangle, triangles, 4090);
-	float num_triangles;
-};*/
-
-static float num_triangles = 30;
+static const float num_indices = 90;
 #ifdef GPU
-StructuredBuffer<Triangle> triangles : register(t1);
+const StructuredBuffer<Vertex> vertices : register(t3);
+const ByteAddressBuffer indices : register(t4);
 #endif
 
 cbuffer RTMaterials REGISTER_B(1)

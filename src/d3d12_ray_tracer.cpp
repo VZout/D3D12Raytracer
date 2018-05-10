@@ -19,16 +19,19 @@ void D3D12RayTracer::Initialize(Viewer* viewer)
 	// Create A CB
 	m_properties_const_buffer = d3d12_viewer->CreateConstantBuffer<D3D12Viewer::num_back_buffers>(sizeof(RTProperties));
 
-	auto triangle_size = (sizeof(fm::vec3) * 3) + sizeof(float);
-	triangle_size = sizeof(Triangle);
-	auto size = triangle_size;
-	m_geom_const_buffer = d3d12_viewer->CreateStructuredBuffer<D3D12Viewer::num_back_buffers>(triangle_size * NUM_GEOMETRY);
+	m_vertices_buffer = d3d12_viewer->CreateStructuredBuffer<1>(sizeof(Vertex) * NUM_VERTICES);
+	m_indices_buffer = d3d12_viewer->CreateByteAddressBuffer<1>(sizeof(INDICES_TYPE) * (NUM_INDICES));
 
-	auto handle = (CD3DX12_CPU_DESCRIPTOR_HANDLE)d3d12_viewer->m_main_srv_desc_heap->GetCPUDescriptorHandleForHeapStart();
-	handle.Offset(1, d3d12_viewer->m_cbv_srv_uav_increment_size);
-	d3d12_viewer->CreateStructuredBufferSRV(m_geom_const_buffer.first, handle, NUM_GEOMETRY, sizeof(Triangle));
+	// Create the SRV to the structured buffers.
+	//auto handle = (CD3DX12_CPU_DESCRIPTOR_HANDLE)d3d12_viewer->m_main_srv_desc_heap->GetCPUDescriptorHandleForHeapStart();
+	//handle.Offset(1, d3d12_viewer->m_cbv_srv_uav_increment_size);
+	//d3d12_viewer->CreateStructuredBufferSRV(m_vertices_buffer.first, handle, NUM_VERTICES, sizeof(Vertex));
 
-	m_material_const_buffer = d3d12_viewer->CreateConstantBuffer<D3D12Viewer::num_back_buffers>(sizeof(RTMaterials));
+	//handle = (CD3DX12_CPU_DESCRIPTOR_HANDLE)d3d12_viewer->m_main_srv_desc_heap->GetCPUDescriptorHandleForHeapStart();
+//	handle.Offset(3, d3d12_viewer->m_cbv_srv_uav_increment_size);
+	//d3d12_viewer->CreateByteAddressBufferSRV(m_indices_buffer.first, handle, NUM_INDICES / (sizeof(std::uint32_t) / sizeof(INDICES_TYPE))); // device the number of indices by 2 since 1 position in the buffer is 32 bit and our index type is 16 bit.
+
+	m_material_const_buffer = d3d12_viewer->CreateConstantBuffer<1>(sizeof(RTMaterials));
 
 	m_initialized = true;
 }
@@ -38,25 +41,49 @@ void D3D12RayTracer::TracePixel(Viewer* viewer, std::uint32_t x, std::uint32_t y
 	auto d3d12_viewer = static_cast<D3D12Viewer*>(viewer);
 
 	d3d12_viewer->m_cmd_list->SetGraphicsRootConstantBufferView(0, m_properties_const_buffer.first[d3d12_viewer->m_frame_idx]->GetGPUVirtualAddress());
-	//d3d12_viewer->m_cmd_list->SetGraphicsRootConstantBufferView(1, m_geom_const_buffer.first[d3d12_viewer->m_frame_idx]->GetGPUVirtualAddress());
-	d3d12_viewer->m_cmd_list->SetGraphicsRootConstantBufferView(1, m_material_const_buffer.first[d3d12_viewer->m_frame_idx]->GetGPUVirtualAddress());
+	d3d12_viewer->m_cmd_list->SetGraphicsRootConstantBufferView(1, m_material_const_buffer.first[0]->GetGPUVirtualAddress());
+	d3d12_viewer->m_cmd_list->SetGraphicsRootShaderResourceView(2, m_vertices_buffer.first[0]->GetGPUVirtualAddress());
+	d3d12_viewer->m_cmd_list->SetGraphicsRootShaderResourceView(3, m_indices_buffer.first[0]->GetGPUVirtualAddress());
 	d3d12_viewer->m_cmd_list->DrawInstanced(4, 1, 0, 0);
 }
 
-void D3D12RayTracer::UpdateGeometry(Viewer* viewer, std::array<Triangle, NUM_GEOMETRY> geometry, bool all_frames)
+void D3D12RayTracer::UpdateGeometry(Viewer* viewer, std::array<Triangle, 1> geometry, bool all_frames)
+{
+}
+
+void D3D12RayTracer::UpdateVertices(Viewer * viewer, std::vector<Vertex> vertices, bool all_frames)
 {
 	auto d3d12_viewer = static_cast<D3D12Viewer*>(viewer);
-	size_t size = sizeof(Triangle) * NUM_GEOMETRY;
+	size_t size = sizeof(Vertex) * NUM_VERTICES;
+
 	if (all_frames)
 	{
-		for (auto i = 0; i < d3d12_viewer->num_back_buffers; i++)
+		for (auto i = 0; i < m_vertices_buffer.first.size(); i++)
 		{
-			memcpy(GET_CB_ADDRESS(m_geom_const_buffer, i), geometry.data(), size);
+			memcpy(GET_CB_ADDRESS(m_vertices_buffer, i), vertices.data(), size);
 		}
 	}
 	else
 	{
-		memcpy(GET_CB_ADDRESS(m_geom_const_buffer, d3d12_viewer->m_frame_idx), geometry.data(), size);
+		memcpy(GET_CB_ADDRESS(m_vertices_buffer, d3d12_viewer->m_frame_idx), vertices.data(), size);
+	}
+}
+
+void D3D12RayTracer::UpdateIndices(Viewer * viewer, std::vector<INDICES_TYPE> indices, bool all_frames)
+{
+	auto d3d12_viewer = static_cast<D3D12Viewer*>(viewer);
+	size_t size = sizeof(INDICES_TYPE) * indices.size();
+
+	if (all_frames)
+	{
+		for (auto i = 0; i < m_indices_buffer.first.size(); i++)
+		{
+			memcpy(GET_CB_ADDRESS(m_indices_buffer, i), indices.data(), size);
+		}
+	}
+	else
+	{
+		memcpy(GET_CB_ADDRESS(m_indices_buffer, d3d12_viewer->m_frame_idx), indices.data(), size);
 	}
 }
 
@@ -66,7 +93,7 @@ void D3D12RayTracer::UpdateMaterials(Viewer * viewer, RTMaterials geometry, int 
 	size_t size = (sizeof(RTMaterials) * num_materials);
 	if (all_frames)
 	{
-		for (auto i = 0; i < d3d12_viewer->num_back_buffers; i++)
+		for (auto i = 0; i < m_material_const_buffer.first.size(); i++)
 		{
 			memcpy(GET_CB_ADDRESS(m_material_const_buffer, i), &geometry, size);
 		}
