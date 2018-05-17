@@ -94,6 +94,27 @@ struct Material
 	float specular;
 };
 
+struct BBox
+{
+	float top;
+	float bottom;
+	float left;
+	float right;
+	float front;
+	float back;
+};
+
+struct BVHNode
+{
+	BBox bbox;
+	int left_first;
+	int count;
+
+	int count_triangles;
+	int bib_start;
+};
+//const StructuredBuffer<BVHNode> bvh_nodes : register(t3);
+
 static const float num_indices = 90;
 #ifdef GPU
 const StructuredBuffer<Vertex> vertices : register(t3);

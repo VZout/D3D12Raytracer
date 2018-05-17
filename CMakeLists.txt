@@ -58,6 +58,8 @@ set(HEADERS
 	src/bone.hpp
 	src/skeleton.hpp
 	src/skeleton.cpp
+	src/bvh.hpp
+	src/bvh.cpp
 	)
 
 set(IMGUI_SOURCES

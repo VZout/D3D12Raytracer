@@ -3,6 +3,7 @@
 #include <memory>
 #include <chrono>
 
+#include "bvh.hpp"
 #include "window.hpp"
 #include "d3d12_viewer.hpp"
 #include "d3d12_ray_tracer.hpp"
@@ -93,9 +94,13 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 	}
 	scene_vertices.resize(NUM_VERTICES);
 
+	BVH<90/3> bvh;
+	bvh.Construct(scene_vertices, scene_indices);
+
 	ray_tracer->UpdateVertices(viewer.get(), scene_vertices, true);
-	ray_tracer->UpdateIndices(viewer.get(), scene_indices, true);
+	ray_tracer->UpdateIndices(viewer.get(), bvh.big_index_buffer, true);
 	ray_tracer->UpdateMaterials(viewer.get(), materials, materials.materials.size(), true);
+
 
 	while (app->IsRunning())
 	{

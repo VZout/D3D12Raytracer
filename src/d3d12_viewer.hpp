@@ -42,7 +42,7 @@ public:
 	void NewFrame() override;
 	void Present() override;
 
-	static const D3D_FEATURE_LEVEL m_feature_level = D3D_FEATURE_LEVEL_12_1;
+	static const D3D_FEATURE_LEVEL m_feature_level = D3D_FEATURE_LEVEL_11_0;
 	static const DXGI_FORMAT m_back_buffer_format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	const std::string m_shader_model = "_5_1";
 	static const bool m_shader_optimization = true;
