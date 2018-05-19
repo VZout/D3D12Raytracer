@@ -106,17 +106,19 @@ struct BBox
 
 struct BVHNode
 {
-	BBox bbox;
-	int left_first;
-	int count;
+	ARRAY(float3, bbox, 2);
+	float left_first;
+	float count;
 
-	int count_triangles;
-	int bib_start;
+	float num_indices;
+	float bib_start;
+	float2 padding;
 };
 //const StructuredBuffer<BVHNode> bvh_nodes : register(t3);
 
-static const float num_indices = 90;
+static const float num_indices = 52704;
 #ifdef GPU
+const StructuredBuffer<BVHNode> bvh_nodes : register(t5);
 const StructuredBuffer<Vertex> vertices : register(t3);
 const ByteAddressBuffer indices : register(t4);
 #endif

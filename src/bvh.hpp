@@ -20,16 +20,17 @@ public:
 			m_indices[i] = i;
 		}
 
-		node_pool_ptr = 0; // 2 because allignment I believe.
+		node_pool_ptr = 1; // 2 because allignment I believe.
 
-		auto root = node_pool[0];
+		BVHNode root;
 		root.left_first = 0;
 		root.count = N;
-		Subdivide(root, scene_vertices, scene_indices/*, root.left_first, root.count*/);
+		node_pool[0] = root;
+		Subdivide(node_pool[0], scene_vertices, scene_indices/*, root.left_first, root.count*/);
 	}
 
 private:
-	inline BBox CalculateBoundingBox(std::vector<Vertex> const& scene_vertices, std::vector<std::uint16_t> const& scene_indices)
+	inline std::array<fm::vec3, 2> CalculateBoundingBox(std::vector<Vertex> const& scene_vertices, std::vector<std::uint16_t> const& scene_indices)
 	{
 		float min_x = std::numeric_limits<float>::infinity();
 		float max_x = std::numeric_limits<float>::lowest();
@@ -47,21 +48,21 @@ private:
 			if (scene_vertices[idx].position.z > max_z) max_z = scene_vertices[idx].position.z;
 		}
 
-		BBox retval;
+		std::array<fm::vec3, 2> bounds;
 
-		retval.left = min_x;
-		retval.right = max_x;
-		retval.top = max_y;
-		retval.bottom = min_y;
-		retval.front = min_z;
-		retval.back = max_z;
-		return retval;
+		bounds[0].x = min_x;
+		bounds[0].y = min_y;
+		bounds[0].z = min_z;
+		bounds[1].x = max_x;
+		bounds[1].y = max_y;
+		bounds[1].z = max_z;
+		return bounds;
 	}
 
 	inline std::pair<std::vector<std::uint16_t>, std::vector<std::uint16_t>> Partition(BVHNode const& node, std::vector<Vertex> const& scene_vertices, std::vector<std::uint16_t> const& scene_indices)
 	{
 		auto bb = node.bbox;
-		float split_plane_x = bb.left + (bb.right - bb.left) * 0.5; // TODO correct?
+		float split_plane_x = bb[0].x + (bb[1].x - bb[0].x) * 0.5; // TODO correct?
 		split_plane_x = 0;
 
 		std::vector<std::uint16_t> left_partition;
@@ -92,31 +93,35 @@ private:
 
 	int q = 0;
 
-	inline void Subdivide(BVHNode target, std::vector<Vertex> const& scene_vertices, std::vector<std::uint16_t> const& scene_indices /*, std::uint32_t first, std::uint32_t count*/)
+	inline void Subdivide(BVHNode& target, std::vector<Vertex> const& scene_vertices, std::vector<std::uint16_t> const& scene_indices /*, std::uint32_t first, std::uint32_t count*/)
 	{
 		target.bbox = CalculateBoundingBox(scene_vertices, scene_indices);
 
-		target.left_first = node_pool_ptr += 2;
+		target.left_first = node_pool_ptr;
+		target.num_indices = -1;
+		node_pool_ptr += 2;
 		auto p = Partition(target, scene_vertices, scene_indices);
 
 		// Stop subdividing if we have less than 3 primitives to subdivide. Also stop subdividing if a subdivide failed and one of the partitions is empty.
 		if (p.first.empty() || p.second.empty() || target.count < 3)
 		{
-			if (q == 0)
+			//if (q == 1)
 			{
-				target.count_triangles = scene_indices.size() / 3;
+				target.bib_start = big_index_buffer.size();
+				target.num_indices = target.bib_start + scene_indices.size();
 				for (auto i : scene_indices)
 				{
-					target.bib_start = big_index_buffer.size() - 1;
 					big_index_buffer.push_back(i);
 				}
+				target.left_first = -1;
+				target.count = 0;
 			}
 			q++;
 			return;
 		}
 		else
 		{
-			target.count_triangles = 0;
+			target.num_indices = 0;
 			target.bib_start = 0;
 		}
 
@@ -127,8 +132,8 @@ private:
 	}
 
 	std::array<std::uint16_t, N> m_indices;
-	std::array<BVHNode, N * 2 - 1> node_pool;
 	std::uint32_t node_pool_ptr;
 public:
+	std::array<BVHNode, N * 2 - 1> node_pool;
 	std::vector<std::uint16_t> big_index_buffer;
 };

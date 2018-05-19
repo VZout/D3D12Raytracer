@@ -5,6 +5,7 @@
 #include "rt_structs.hlsl"
 
 //#define REFLECTIONS
+#define USE_BVH
 #define REFLECTION_RECURSION 0
 
 #ifdef GPU
@@ -49,13 +50,6 @@ struct Intersection
 
 static const float inf = 9999999;
 
-Triangle MakeNull()
-{
-	Triangle retval;
-	retval.a.x = -inf;
-	return retval;
-}
-
 // Load three 16 bit indices from a byte addressed buffer.
 uint3 Load3x16BitIndices(uint offsetBytes)
 {
@@ -86,11 +80,6 @@ uint3 Load3x16BitIndices(uint offsetBytes)
     }
 
     return retval;
-}
-
-bool IsNull(Triangle tri)
-{
-	return tri.a.x == -inf;
 }
 
 constant int num_lights = 2;
@@ -143,7 +132,7 @@ FUNC float3 ComputeLighting(float3 pont, float3 N, float3 V, Material material, 
 
 		// Shadow check
 		const Intersection intersect = ClosestIntersection(pont, vec_l, epsilon, max_t);
-		if (!IsNull(intersect.closest))
+		if (intersect.closest_t != inf) // if triangle found
 			continue;
 
 		// Diffuse
@@ -167,6 +156,41 @@ FUNC float3 ComputeLighting(float3 pont, float3 N, float3 V, Material material, 
 	}
 
 	return float3(intensity, intensity, intensity);
+}
+
+FUNC bool IntersectBVH(float3 orig, float3 dir, BVHNode node)
+{
+    float tmin, tmax, tymin, tymax, tzmin, tzmax; 
+ 
+	float3 invdir = 1 / dir; 
+	int sign[3];
+	sign[0] = (invdir.x < 0); 
+    sign[1] = (invdir.y < 0); 
+    sign[2] = (invdir.z < 0); 
+
+    tmin = (node.bbox[sign[0]].x - orig.x) * invdir.x; 
+    tmax = (node.bbox[1-sign[0]].x - orig.x) * invdir.x; 
+    tymin = (node.bbox[sign[1]].y - orig.y) * invdir.y; 
+    tymax = (node.bbox[1-sign[1]].y - orig.y) * invdir.y; 
+ 
+    if ((tmin > tymax) || (tymin > tmax)) 
+        return false; 
+    if (tymin > tmin) 
+        tmin = tymin; 
+    if (tymax < tmax) 
+        tmax = tymax; 
+ 
+    tzmin = (node.bbox[sign[2]].z - orig.z) * invdir.z; 
+    tzmax = (node.bbox[1-sign[2]].z - orig.z) * invdir.z; 
+ 
+    if ((tmin > tzmax) || (tzmin > tmax)) 
+        return false; 
+    if (tzmin > tmin) 
+        tmin = tzmin; 
+    if (tzmax < tmax) 
+        tmax = tzmax; 
+ 
+    return true; 
 }
 
 FUNC float2 IntersectRayTriangle(float3 orig, float3 dir, Triangle tri) 
@@ -197,10 +221,96 @@ FUNC float2 IntersectRayTriangle(float3 orig, float3 dir, Triangle tri)
 FUNC Intersection ClosestIntersection(float3 origin, float3 direction, float min_t, float max_t)
 {
 	float closest_t = inf;
-	Triangle closest_triangle = MakeNull();
+	Triangle closest_triangle;
 
-	[unroll(num_indices/3)]
-	for (int i = 0; i < num_indices; i += 3)
+	int bvh_num_indices = -1;
+	int indices_start = -1;
+	
+#ifdef USE_BVH
+	int left_child = -1;
+
+	// Intersect root node.
+	if (IntersectBVH(origin, direction, bvh_nodes[0]))
+	{
+		left_child = bvh_nodes[0].left_first;
+	}
+	else // no bvh intersections found
+	{
+		Intersection retval;
+		retval.closest = closest_triangle;
+		retval.closest_t = closest_t;
+		return retval;
+	}
+
+	// Recursivily intersect childeren
+	while(bvh_num_indices == -1) // while no end node has been found and it didn't completely miss.
+	{
+		const BVHNode left_node = bvh_nodes[left_child];
+		const BVHNode right_node = bvh_nodes[left_child + 1];
+
+		const bool left = IntersectBVH(origin, direction, left_node);
+		const bool right = IntersectBVH(origin, direction, right_node);
+
+		if (left)
+		{
+			if (left_node.num_indices == -1) // if is not a end node
+			{
+				left_child = left_node.left_first;
+			}
+			else { // is a end node.
+				bvh_num_indices = left_node.num_indices;
+				indices_start = left_node.bib_start;
+			}
+		}
+		else if(right)
+		{
+			if (right_node.num_indices == -1) // if is not a end node
+			{
+				left_child = right_node.left_first;
+			}
+			else { // is a end node.
+				bvh_num_indices = right_node.num_indices;
+				indices_start = right_node.bib_start;
+			}
+		}
+		else {
+			// Becasue hlsl is garbage?
+			/*closest_triangle.a = float3(0, 0, 0);
+			closest_triangle.b = float3(0, 0, 0);
+			closest_triangle.c = float3(0, 0, 0);
+			closest_triangle.normal = float3(0, 0, 0);
+			closest_triangle.material_idx = 0;
+			closest_triangle.u = 0;
+			closest_triangle.v = 0;
+			closest_triangle.padding3 = 0;
+
+			Intersection intersection;
+			intersection.closest = closest_triangle;
+			intersection.closest_t = closest_t;
+			return intersection;*/
+			break; // missed
+		}
+
+		// hit multiple bvh's. Using both in this case.
+		if (left && right)
+		{
+			if (left_node.bib_start < right_node.bib_start) {
+				indices_start = left_node.bib_start;
+				bvh_num_indices = right_node.num_indices;
+			}
+			else
+			{
+				indices_start = right_node.bib_start;
+				bvh_num_indices = left_node.num_indices;
+			}
+		}
+	}
+#else
+	bvh_num_indices = num_indices;
+	indices_start = 0;
+#endif
+
+	for (int i = indices_start; i < bvh_num_indices; i += 3)
 	{
 		const uint3 tri_vertices = Load3x16BitIndices(i*2);
 		const Vertex v0 = vertices[tri_vertices.x];
@@ -211,7 +321,7 @@ FUNC Intersection ClosestIntersection(float3 origin, float3 direction, float min
 		tri.a = v0.position;
 		tri.b = v1.position;
 		tri.c = v2.position;
-		tri.normal = v0.normal;
+		tri.normal = normalize(v0.normal + v1.normal + v2.normal);
 		tri.material_idx = v1.material_idx;
 		
 
@@ -265,7 +375,7 @@ FUNC float3 RecursiveTraceRay(float3 origin, float3 direction, float min_t, floa
 		Triangle closest_triangle = intersect.closest;
 		const float closest_t = intersect.closest_t;
 
-		if (IsNull(closest_triangle))
+		if (intersect.closest_t == inf) // if no triangle found
 		{
 			reflected_color = sky_color;
 
@@ -333,12 +443,11 @@ FUNC float3 RecursiveTraceRay(float3 origin, float3 direction, float min_t, floa
 
 FUNC float3 TraceRay(float3 origin, float3 direction, float min_t, float max_t, int depth)
 {
-
 	const Intersection intersect = ClosestIntersection(origin, direction, min_t, max_t);
 	const Triangle closest_triangle = intersect.closest;
 	const float closest_t = intersect.closest_t;
 
-	if (IsNull(closest_triangle))
+	if (closest_t == inf) // if no triangle found
 		return sky_color;
 
 	const float3 P = origin + (direction * closest_t);
@@ -413,7 +522,7 @@ FUNC float4 PixelTrace(Input input)
 	color.y = pow(color.y, 1.f / gamma);
 	color.z = pow(color.z, 1.f / gamma);
 
-	//return float4(indices[0].index, 0, 0, 1.f);
+	//return float4(bvh_right_hits, bvh_left_hits, 0, 1.f);
 	return float4(color.x, color.y, color.z, 1.f);
 }
 // ##################################
