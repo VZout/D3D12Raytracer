@@ -29,6 +29,17 @@ struct Light
 	float3 direction;
 };
 
+struct Sphere
+{
+	float3 center;
+	float radius;
+	float3 color;
+	float intensity;
+};
+
+constant int num_spheres = 1;
+static Sphere spheres[num_spheres];
+
 #ifndef GPU
 static float2 canvas_size(600, 600);
 static float viewport_size = 1;
@@ -41,9 +52,17 @@ static float gamma = 1;
 static float exposure = 1;
 #endif
 
+static float2 seeder;
+
 struct Intersection
 {
 	Triangle closest;
+	float closest_t;
+};
+
+struct SphereIntersection
+{
+	Sphere closest;
 	float closest_t;
 };
 
@@ -88,6 +107,16 @@ uint3 Load3x16BitIndices(uint offsetBytes)
     return retval;
 }
 
+float3 RandomSpherePoint(Sphere sphere, float u, float v){
+	static const float PI = 3.14159265f;
+	float theta = 2 * PI * u;
+	float phi = acos(2 * v - 1);
+	float x = sphere.center.x + (sphere.radius * sin(phi) * cos(theta));
+	float y = sphere.center.y + (sphere.radius * sin(phi) * sin(theta));
+	float z = sphere.center.z + (sphere.radius * cos(phi));
+	return float3(x, y, z);	
+}
+
 bool IsNull(Triangle tri)
 {
 	return tri.a.x == -inf;
@@ -114,60 +143,107 @@ float3 ReflectRay(float3 v1, float3 v2);
 #define AMBIENT 0
 #define POINT 1
 
+FUNC float random( float2 p )
+{
+    float2 K1 = float2(
+        23.14069263277926, // e^pi (Gelfond's constant)
+         2.665144142690225 // 2^sqrt(2) (Gelfondâ€“Schneider constant)
+    );
+    return frac( cos( dot(p,K1) ) * 12345.6789 );
+}
+
 FUNC float3 ComputeLighting(float3 pont, float3 N, float3 V, Material material, float max_t)
 {
+	const int num_samples = 75;
+	float intensities[num_samples];
 	float intensity = 0;
 	const float length_n = length(N);
 	const float length_v = length(V);
 
-	[unroll(num_lights)]
-	for (int i = 0; i < num_lights; i++)
+
+	[unroll(num_spheres)]
+	for (int i = 0; i < num_spheres; i++)
 	{
-		Light light = lights[i];
-		if (light.type == AMBIENT)
+		//Light light = lights[i];
+		Sphere slight = spheres[i];
+		/*if (light.type == AMBIENT)
 		{
 			intensity += light.intensity;
 			continue;
-		}
+		}*/
 
-		float3 vec_l;
-		if (light.type == POINT)
+		for (int p = 0; p < num_samples; p++)
 		{
-			vec_l = light.position - pont;
-			max_t = 1.0f;
-		}
-		else // Light.DIRECTIONAL
-		{
-			vec_l = light.position;
-		}
-
-		// Shadow check
-		const Intersection intersect = ClosestIntersection(pont, vec_l, epsilon, max_t);
-		if (!IsNull(intersect.closest))
-			continue;
-
-		// Diffuse
-		const float n_dot_l = dot(N, vec_l);
-		if (n_dot_l > 0)
-		{
-			intensity += light.intensity * n_dot_l / (length_n * length(vec_l));
-			//intensity += light.intensity * n_dot_l;
-		}
-
-		if (material.specular != -1)
-		{
-			const float3 vec_r = ReflectRay(vec_l, N);
-			//const float3 vec_r = mul(2.0*dot(N, vec_l), N) - vec_l;
-			const float r_dot_v = dot(vec_r, V);
-			if (r_dot_v > 0)
+			float3 vec_l;
+			//if (light.type == POINT)
 			{
-				intensity += light.intensity * pow(r_dot_v / (length(vec_r) * length_v), material.specular);
+				//vec_l = slight.center - pont;
+				//vec_l = RandomSpherePoint(slight, randoms[floor((p) % 500)], randoms[floor((p + 100) % 500)]) - pont;
+				vec_l = RandomSpherePoint(slight, random(float2(pont.x + pont.z, pont.y + pont.z) * p) % 1, random(float2(N.x + N.z, N.y + N.z) / p) % 1) - pont;
+				max_t = 1.0f;
 			}
+			/*else // Light.DIRECTIONAL
+			{
+				vec_l = light.position;
+			}*/
+
+			// Shadow check
+			const Intersection intersect = ClosestIntersection(pont, vec_l, epsilon, max_t);
+			if (!IsNull(intersect.closest))
+			{
+				intensities[p] = 0;
+				continue;
+			}
+
+			// Diffuse
+			const float n_dot_l = dot(N, vec_l);
+			if (n_dot_l > 0)
+			{
+				intensity += slight.intensity * n_dot_l / (length_n * length(vec_l));
+				//intensity += light.intensity * n_dot_l;
+			}
+
+			if (material.specular != -1)
+			{
+				const float3 vec_r = ReflectRay(vec_l, N);
+				//const float3 vec_r = mul(2.0*dot(N, vec_l), N) - vec_l;
+				const float r_dot_v = dot(vec_r, V);
+				if (r_dot_v > 0)
+				{
+					intensity += slight.intensity * pow(r_dot_v / (length(vec_r) * length_v), material.specular);
+				}
+			}
+
+			intensities[p] = intensity;
 		}
 	}
 
+	intensity = intensity / num_samples;
+
+
 	return float3(intensity, intensity, intensity);
 }
+
+FUNC float2 IntersectRaySphere(float3 origin, float3 direction, Sphere sphere)
+{
+	float3 oc = origin - sphere.center;
+
+	float k1 = dot(direction, direction);
+	float k2 = 2 * dot(oc, direction);
+	float k3 = dot(oc, oc) - sphere.radius * sphere.radius;
+
+	float discriminant = k2 * k2 - 4.f * k1 * k3;
+	if (discriminant < 0)
+	{
+		return float2(inf, inf);
+	}
+
+	float t1 = (-k2 + sqrt(discriminant)) / (2.f * k1);
+	float t2 = (-k2 - sqrt(discriminant)) / (2.f * k1);
+
+	return float2(t1, t2);
+}
+
 
 FUNC float2 IntersectRayTriangle(float3 orig, float3 dir, Triangle tri) 
 { 
@@ -380,6 +456,14 @@ FUNC float4 PixelTrace(Input input)
 	}
 #endif
 
+
+	spheres[0].center = float3(0, 2, 1);
+	spheres[0].color = float3(1, 0, 0);
+	spheres[0].radius = 0.5;
+	spheres[0].intensity = 1;
+	//spheres[0].specular = 0;
+	//spheres[0].metal = 01;
+
 	lights[0].position = float3(0, 0, 3);
 	lights[0].intensity = 0.2;
 	lights[0].type = 0;
@@ -392,6 +476,8 @@ FUNC float4 PixelTrace(Input input)
 #else
 	const float2 pixel_pos = {input.pos.x, input.pos.y};
 #endif
+
+	seeder = pixel_pos;
 
 	/*const float pixel_size = 0.25;
 	const float3 dir0 = CanvasToViewport(pixel_pos - float2(-pixel_size, -pixel_size));

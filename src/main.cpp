@@ -24,6 +24,8 @@ static bool rt_use_cpu = false;
 static float rt_gamma = 2.2f; 
 static float rt_exposure = 1.f;
 
+static bool rt_temp = false;
+
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 {
 	auto app = std::make_unique<Application>(instance, cmd_show, "Raytracer", 600, 600);
@@ -141,6 +143,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 		ImGui::DragFloat("Viewport Size", &rt_viewport_size, 0.01f, 0);
 		ImGui::DragFloat2("Canvas Size", rt_canvas_size.data);
 		ImGui::Checkbox("Use CPU", &rt_use_cpu);
+		ImGui::Checkbox("Use temp", &rt_temp);
 		ImGui::PopItemWidth();
 		ImGui::Separator();
 		ImGui::DragFloat3("Camera Position", rt_camera_pos.data, 0.1f);
@@ -175,6 +178,22 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 		properties.gamma = rt_gamma;
 		properties.exposure = rt_exposure;
 		properties.floor_color = rt_floor_color;
+
+		if (rt_temp)
+		{
+			for (auto i = 0; i < properties.randoms.size(); i++)
+			{
+				properties.randoms[i] = 2;
+			}
+		}
+		else
+		{
+			for (auto i = 0; i < properties.randoms.size(); i++)
+			{
+				srand(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+				properties.randoms[i] = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+			}
+		}
 
 		if (!rt_use_cpu)
 		{

@@ -102,7 +102,7 @@ private:
 		// Stop subdividing if we have less than 3 primitives to subdivide. Also stop subdividing if a subdivide failed and one of the partitions is empty.
 		if (p.first.empty() || p.second.empty() || target.count < 3)
 		{
-			if (q == 0)
+			//if (q == 0)
 			{
 				target.count_triangles = scene_indices.size() / 3;
 				for (auto i : scene_indices)

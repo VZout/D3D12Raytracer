@@ -57,6 +57,7 @@ cbuffer RTProperties REGISTER_B(0)
 	int use_cpu;
 	float exposure;
 	float3 padding;
+	ARRAY(float, randoms, 500);
 };
 
 struct Triangle

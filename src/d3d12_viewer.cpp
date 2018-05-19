@@ -739,7 +739,7 @@ void D3D12Viewer::UpdateRenderTexture(ComPtr<ID3D12GraphicsCommandList> cmd_list
 {
 	cmd_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(texture->resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST));
 
-	size_t texture_upload_buffer_size;
+	size_t texture_upload_buffer_size;	
 	size_t bytes_per_row;
 	UINT num_rows;
 	m_device->GetCopyableFootprints(&texture->texture_desc, 0, 1, 0, nullptr, &num_rows, &bytes_per_row, &texture_upload_buffer_size);
