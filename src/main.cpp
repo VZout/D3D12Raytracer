@@ -21,7 +21,7 @@ static fm::vec3 rt_camera_pos = { 0, 2, -6 };
 static fm::vec3 rt_sky_color = { 190.f / 255.f, 240.f / 255.f, 1 };
 static fm::vec3 rt_floor_color = { 1, 1, 1 };
 static bool rt_use_cpu = false;
-static float rt_gamma = 2.2f; 
+static float rt_gamma = 2.2f;
 static float rt_exposure = 1.f;
 
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
@@ -68,7 +68,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 
 	{ /* LOAD MODEL AND CONVERT TO CRAPPY TRIANGLES*/
 		rlr::Model* model = new rlr::Model();
-		rlr::Load(*model, "scene.fbx");
+		rlr::Load(*model, "spot.obj");
 
 		int vertex_offset = 0;
 		for (auto m = 0; m < model->meshes.size(); m++)
@@ -100,7 +100,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int cmd_show)
 	ray_tracer->UpdateVertices(viewer.get(), scene_vertices, true);
 	ray_tracer->UpdateIndices(viewer.get(), bvh.big_index_buffer, true);
 	ray_tracer->UpdateMaterials(viewer.get(), materials, materials.materials.size(), true);
-
+	ray_tracer->UpdateBVH(viewer.get(), bvh.node_pool);
 
 	while (app->IsRunning())
 	{

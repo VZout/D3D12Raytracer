@@ -121,7 +121,7 @@ void D3D12Viewer::NewFrame()
 	auto teamp_heap = m_main_srv_desc_heap.Get();
 	m_cmd_list->SetDescriptorHeaps(1, &teamp_heap);
 
-	m_cmd_list->SetGraphicsRootDescriptorTable(4, m_main_srv_desc_heap->GetGPUDescriptorHandleForHeapStart());
+	m_cmd_list->SetGraphicsRootDescriptorTable(5, m_main_srv_desc_heap->GetGPUDescriptorHandleForHeapStart());
 
 	m_cmd_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 	m_cmd_list->IASetVertexBuffers(0, 1, &GET_VB_VIEW(screen_quad_vb));
@@ -457,12 +457,13 @@ ComPtr<ID3D12RootSignature> D3D12Viewer::CreateBasicRootSignature()
 	CD3DX12_DESCRIPTOR_RANGE desc_range;
 	desc_range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0);
 
-	std::array<CD3DX12_ROOT_PARAMETER, 5> parameters;
+	std::array<CD3DX12_ROOT_PARAMETER, 6> parameters;
 	parameters[0].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
 	parameters[1].InitAsConstantBufferView(1, 0, D3D12_SHADER_VISIBILITY_PIXEL);
 	parameters[2].InitAsShaderResourceView(3, 0, D3D12_SHADER_VISIBILITY_PIXEL);
 	parameters[3].InitAsShaderResourceView(4, 0, D3D12_SHADER_VISIBILITY_PIXEL);
-	parameters[4].InitAsDescriptorTable(1, &desc_range, D3D12_SHADER_VISIBILITY_PIXEL);
+	parameters[4].InitAsShaderResourceView(5, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+	parameters[5].InitAsDescriptorTable(1, &desc_range, D3D12_SHADER_VISIBILITY_PIXEL);
 
 	CD3DX12_ROOT_SIGNATURE_DESC root_signature_desc;
 	root_signature_desc.Init(parameters.size(),

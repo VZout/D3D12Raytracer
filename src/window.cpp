@@ -46,7 +46,7 @@ Application::Application(HINSTANCE instance, int cmd_show, std::string const& na
 	AdjustWindowRectEx(&client_rect, window_style, FALSE, wc.style);
 
 	m_handle = CreateWindowEx(
-		NULL,
+		wc.style,
 		name.c_str(),
 		name.c_str(),
 		window_style,

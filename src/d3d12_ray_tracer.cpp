@@ -1,7 +1,5 @@
 #include "d3d12_ray_tracer.hpp"
 
-#include "d3d12_viewer.hpp"
-
 D3D12RayTracer::D3D12RayTracer() : RayTracer()
 {
 
@@ -21,6 +19,7 @@ void D3D12RayTracer::Initialize(Viewer* viewer)
 
 	m_vertices_buffer = d3d12_viewer->CreateStructuredBuffer<1>(sizeof(Vertex) * NUM_VERTICES);
 	m_indices_buffer = d3d12_viewer->CreateByteAddressBuffer<1>(sizeof(INDICES_TYPE) * (NUM_INDICES));
+	m_bvh_buffer = d3d12_viewer->CreateStructuredBuffer<1>(sizeof(BVHNode) * BVH_NODES);
 
 	// Create the SRV to the structured buffers.
 	//auto handle = (CD3DX12_CPU_DESCRIPTOR_HANDLE)d3d12_viewer->m_main_srv_desc_heap->GetCPUDescriptorHandleForHeapStart();
@@ -44,6 +43,7 @@ void D3D12RayTracer::TracePixel(Viewer* viewer, std::uint32_t x, std::uint32_t y
 	d3d12_viewer->m_cmd_list->SetGraphicsRootConstantBufferView(1, m_material_const_buffer.first[0]->GetGPUVirtualAddress());
 	d3d12_viewer->m_cmd_list->SetGraphicsRootShaderResourceView(2, m_vertices_buffer.first[0]->GetGPUVirtualAddress());
 	d3d12_viewer->m_cmd_list->SetGraphicsRootShaderResourceView(3, m_indices_buffer.first[0]->GetGPUVirtualAddress());
+	d3d12_viewer->m_cmd_list->SetGraphicsRootShaderResourceView(4, m_bvh_buffer.first[0]->GetGPUVirtualAddress());
 	d3d12_viewer->m_cmd_list->DrawInstanced(4, 1, 0, 0);
 }
 
@@ -66,6 +66,17 @@ void D3D12RayTracer::UpdateVertices(Viewer * viewer, std::vector<Vertex> vertice
 	else
 	{
 		memcpy(GET_CB_ADDRESS(m_vertices_buffer, d3d12_viewer->m_frame_idx), vertices.data(), size);
+	}
+}
+
+void D3D12RayTracer::UpdateBVH(Viewer * viewer, std::array<BVHNode, BVH_NODES> nodes)
+{
+	auto d3d12_viewer = static_cast<D3D12Viewer*>(viewer);
+	size_t size = sizeof(BVHNode) * BVH_NODES;
+
+	for (auto i = 0; i < m_bvh_buffer.first.size(); i++)
+	{
+		memcpy(GET_CB_ADDRESS(m_bvh_buffer, i), nodes.data(), size);
 	}
 }
 
