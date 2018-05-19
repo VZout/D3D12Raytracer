@@ -105,7 +105,7 @@ private:
 		// Stop subdividing if we have less than 3 primitives to subdivide. Also stop subdividing if a subdivide failed and one of the partitions is empty.
 		if (p.first.empty() || p.second.empty() || target.count < 3)
 		{
-			//if (q == 1)
+			//if (q == 0)
 			{
 				target.bib_start = big_index_buffer.size();
 				target.num_indices = target.bib_start + scene_indices.size();

@@ -57,6 +57,7 @@ cbuffer RTProperties REGISTER_B(0)
 	int use_cpu;
 	float exposure;
 	float3 padding;
+	ARRAY(float, randoms, 500);
 };
 
 struct Triangle
@@ -114,9 +115,8 @@ struct BVHNode
 	float bib_start;
 	float2 padding;
 };
-//const StructuredBuffer<BVHNode> bvh_nodes : register(t3);
 
-static const float num_indices = 52704;
+static const float num_indices = 90;
 #ifdef GPU
 const StructuredBuffer<BVHNode> bvh_nodes : register(t5);
 const StructuredBuffer<Vertex> vertices : register(t3);

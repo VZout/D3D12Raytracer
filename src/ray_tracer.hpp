@@ -4,8 +4,8 @@
 #include "../rt_structs.hlsl"
 #include "../raytracer.ps"
 
-#define NUM_VERTICES 3444
-#define NUM_INDICES 52704
+#define NUM_VERTICES 100
+#define NUM_INDICES 90
 #define INDICES_TYPE std::uint16_t
 
 struct Texture;
