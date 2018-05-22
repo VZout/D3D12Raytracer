@@ -16,6 +16,7 @@
 #define length(v) v.Length()
 #define normalize(v) fm::Vec<float, 3>::Normalize(v);
 #define dot(a, b) a.Dot(b)
+#define cross(a, b) a.Cross(b)
 #define clamp(a, b, c) fm::clamp(a, b, c)
 #define REGISTER_B(i)
 #define int std::int32_t
@@ -57,7 +58,6 @@ cbuffer RTProperties REGISTER_B(0)
 	int use_cpu;
 	float exposure;
 	float3 padding;
-	ARRAY(float, randoms, 500);
 };
 
 struct Triangle
@@ -116,7 +116,22 @@ struct BVHNode
 	float2 padding;
 };
 
+static const float inf = 9999999;
+static const float PI = 3.14159265f;
 static const float num_indices = 90;
+
+#ifndef GPU // properties
+static float2 canvas_size(600, 600);
+static float viewport_size = 1;
+static float epsilon = 0.08;
+static float3 camera_pos(0, 0, -3);
+static float z_near = 1;
+static float3 sky_color(0, 0, 0);
+static float3 floor_color(1, 1, 1);
+static float gamma = 1;
+static float exposure = 1;
+#endif
+
 #ifdef GPU
 const StructuredBuffer<BVHNode> bvh_nodes : register(t5);
 const StructuredBuffer<Vertex> vertices : register(t3);
@@ -126,6 +141,22 @@ const ByteAddressBuffer indices : register(t4);
 cbuffer RTMaterials REGISTER_B(1)
 {
 	ARRAY(Material, materials, 3);
+};
+
+struct Sphere
+{
+	float3 center;
+	float radius;
+	float3 color;
+	float intensity;
+};
+
+struct Light
+{
+	int type;
+	float intensity;
+	float3 position;
+	float3 direction;
 };
 
 #ifndef GPU

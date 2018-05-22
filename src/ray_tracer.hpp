@@ -1,8 +1,8 @@
 #pragma once
 
 #include <cstdint>
-#include "../rt_structs.hlsl"
-#include "../raytracer.ps"
+#include "../structs.hlsl"
+#include "../raytracer.hlsl"
 
 #define NUM_VERTICES 100
 #define NUM_INDICES 90

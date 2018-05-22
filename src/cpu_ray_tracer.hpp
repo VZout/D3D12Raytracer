@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ray_tracer.hpp"
-#include "../raytracer.ps"
+#include "../raytracer.hlsl"
 #include "vec.hpp"
 
 class Viewer;

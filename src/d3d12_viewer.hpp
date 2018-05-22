@@ -14,7 +14,7 @@
 #include "viewer.hpp"
 #include "vec.hpp"
 #include "d3dx12.hpp"
-#include "../rt_structs.hlsl"
+#include "../structs.hlsl"
 
 using Microsoft::WRL::ComPtr;
 

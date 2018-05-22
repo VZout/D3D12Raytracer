@@ -3,8 +3,8 @@
 #include <array>
 #include <cstdint>
 
-#include "../rt_structs.hlsl"
-#include "../raytracer.ps"
+#include "../structs.hlsl"
+#include "../raytracer.hlsl"
 
 template<std::uint32_t N>
 class BVH

@@ -2,7 +2,12 @@
 #pragma once
 #endif
 
-#include "rt_structs.hlsl"
+#include "structs.hlsl"
+#ifdef GPU
+#include "intersects.hlsl"
+#include "random.hlsl"
+#include "util.hlsl"
+#endif
 
 //#define REFLECTIONS
 //#define USE_BVH
@@ -22,98 +27,11 @@ struct VS_OUTPUT
 // ##################################
 #ifdef GPU
 
-struct Light
-{
-	int type;
-	float intensity;
-	float3 position;
-	float3 direction;
-};
-
-struct Sphere
-{
-	float3 center;
-	float radius;
-	float3 color;
-	float intensity;
-};
-
 constant int num_spheres = 1;
 static Sphere spheres[num_spheres];
 
-#ifndef GPU
-static float2 canvas_size(600, 600);
-static float viewport_size = 1;
-static float epsilon = 0.08;
-static float3 camera_pos(0, 0, -3);
-static float z_near = 1;
-static float3 sky_color(0, 0, 0);
-static float3 floor_color(1, 1, 1);
-static float gamma = 1;
-static float exposure = 1;
-#endif
-
-struct Intersection
-{
-	Triangle closest;
-	float closest_t;
-};
-
-struct SphereIntersection
-{
-	Sphere closest;
-	float closest_t;
-};
-
-static const float inf = 9999999;
-static const float PI = 3.14159265f;
-
-// Load three 16 bit indices from a byte addressed buffer.
-uint3 Load3x16BitIndices(uint offsetBytes)
-{
-    uint3 retval;
-
-    // ByteAdressBuffer loads must be aligned at a 4 byte boundary.
-    // Since we need to read three 16 bit indices: { 0, 1, 2 } 
-    // aligned at a 4 byte boundary as: { 0 1 } { 2 0 } { 1 2 } { 0 1 } ...
-    // we will load 8 bytes (~ 4 indices { a b | c d }) to handle two possible index triplet layouts,
-    // based on first index's offsetBytes being aligned at the 4 byte boundary or not:
-    //  Aligned:     { 0 1 | 2 - }
-    //  Not aligned: { - 0 | 1 2 }
-    const uint dwordAlignedOffset = offsetBytes & ~3;    
-    const uint2 four16BitIndices = indices.Load2(dwordAlignedOffset);
- 
-    // Aligned: { 0 1 | 2 - } => retrieve first three 16bit indices
-    if (dwordAlignedOffset == offsetBytes)
-    {
-        retval.x = four16BitIndices.x & 0xffff;
-        retval.y = (four16BitIndices.x >> 16) & 0xffff;
-        retval.z = four16BitIndices.y & 0xffff;
-    }
-    else // Not aligned: { - 0 | 1 2 } => retrieve last three 16bit indices
-    {
-        retval.x = (four16BitIndices.x >> 16) & 0xffff;
-        retval.y = four16BitIndices.y & 0xffff;
-        retval.z = (four16BitIndices.y >> 16) & 0xffff;
-    }
-
-    return retval;
-}
-
 constant int num_lights = 2;
 static Light lights[num_lights];
-
-FUNC Material GetMaterial(int idx)
-{
-	return materials[idx];
-}
-
-FUNC float3 CanvasToViewport(float2 pos)
-{
-	return float3(pos.x * viewport_size / canvas_size.x,
-		pos.y * viewport_size / canvas_size.y,
-		z_near);
-}
 
 Intersection ClosestIntersection(float3 origin, float3 direction, float min_t, float max_t);
 float3 ReflectRay(float3 v1, float3 v2);
@@ -121,31 +39,12 @@ float3 ReflectRay(float3 v1, float3 v2);
 #define AMBIENT 0
 #define POINT 1
 
-FUNC float random( float2 p )
-{
-    float2 K1 = float2(
-        23.14069263277926, // e^pi (Gelfond's constant)
-         2.665144142690225 // 2^sqrt(2) (Gelfondâ€“Schneider constant)
-    );
-    return frac( cos( dot(p,K1) ) * 12345.6789 );
-}
-
-float3 RandomSpherePoint(Sphere sphere, float u, float v){
-	const float theta = 2 * PI * u;
-	const float phi = acos(2 * v - 1);
-	const float x = sphere.center.x + (sphere.radius * sin(phi) * cos(theta));
-	const float y = sphere.center.y + (sphere.radius * sin(phi) * sin(theta));
-	const float z = sphere.center.z + (sphere.radius * cos(phi));
-	return float3(x, y, z);	
-}
-
 FUNC float3 ComputeLighting(float3 pont, float3 N, float3 V, Material material, float max_t)
 {
 	const int num_samples = 50;
 	float intensity = 0;
 	const float length_n = length(N);
 	const float length_v = length(V);
-
 
 	[unroll(num_spheres)]
 	for (int i = 0; i < num_spheres; i++)
@@ -164,8 +63,7 @@ FUNC float3 ComputeLighting(float3 pont, float3 N, float3 V, Material material, 
 			//if (light.type == POINT)
 			{
 				//vec_l = slight.center - pont;
-				//vec_l = RandomSpherePoint(slight, randoms[floor((p) % 500)], randoms[floor((p + 100) % 500)]) - pont;
-				vec_l = RandomSpherePoint(slight, random(float2(pont.x + pont.z, pont.y + pont.z) * p) % 1, random(float2(N.x + N.z, N.y + N.z) / p) % 1) - pont;
+				vec_l = RandomSpherePoint(slight, random(float2(pont.x + pont.z, pont.y + pont.z) * p) % 1, random(float2(N.x + N.z, N.y + N.z) / (p+1)) % 1) - pont;
 				max_t = 1.0f;
 			}
 			/*else // Light.DIRECTIONAL
@@ -203,87 +101,6 @@ FUNC float3 ComputeLighting(float3 pont, float3 N, float3 V, Material material, 
 	intensity = intensity / num_samples;
 	return float3(intensity, intensity, intensity);
 }
-
-FUNC bool IntersectBVH(float3 orig, float3 dir, BVHNode node)
-{
-    float tmin, tmax, tymin, tymax, tzmin, tzmax; 
- 
-	float3 invdir = 1 / dir; 
-	int sign[3];
-	sign[0] = (invdir.x < 0); 
-    sign[1] = (invdir.y < 0); 
-    sign[2] = (invdir.z < 0); 
-
-    tmin = (node.bbox[sign[0]].x - orig.x) * invdir.x; 
-    tmax = (node.bbox[1-sign[0]].x - orig.x) * invdir.x; 
-    tymin = (node.bbox[sign[1]].y - orig.y) * invdir.y; 
-    tymax = (node.bbox[1-sign[1]].y - orig.y) * invdir.y; 
- 
-    if ((tmin > tymax) || (tymin > tmax)) 
-        return false; 
-    if (tymin > tmin) 
-        tmin = tymin; 
-    if (tymax < tmax) 
-        tmax = tymax; 
- 
-    tzmin = (node.bbox[sign[2]].z - orig.z) * invdir.z; 
-    tzmax = (node.bbox[1-sign[2]].z - orig.z) * invdir.z; 
- 
-    if ((tmin > tzmax) || (tzmin > tmax)) 
-        return false; 
-    if (tzmin > tmin) 
-        tmin = tzmin; 
-    if (tzmax < tmax) 
-        tmax = tzmax; 
- 
-    return true; 
-}
-
-FUNC float2 IntersectRaySphere(float3 origin, float3 direction, Sphere sphere)
-{
-	float3 oc = origin - sphere.center;
-
-	float k1 = dot(direction, direction);
-	float k2 = 2 * dot(oc, direction);
-	float k3 = dot(oc, oc) - sphere.radius * sphere.radius;
-
-	float discriminant = k2 * k2 - 4.f * k1 * k3;
-	if (discriminant < 0)
-	{
-		return float2(inf, inf);
-	}
-
-	float t1 = (-k2 + sqrt(discriminant)) / (2.f * k1);
-	float t2 = (-k2 - sqrt(discriminant)) / (2.f * k1);
-
-	return float2(t1, t2);
-}
-
-
-FUNC float2 IntersectRayTriangle(float3 orig, float3 dir, Triangle tri) 
-{ 
-   	const float3 v0v1 = tri.b - tri.a; 
-    const float3 v0v2 = tri.c - tri.a; 
-    const float3 pvec = cross(dir, v0v2); 
-    const float det = dot(v0v1, pvec); 
- 
-    // ray and triangle are parallel if det is close to 0
-    if (abs(det) < epsilon) return float2(inf, inf); 
- 
-    const float invDet = 1 / det; 
- 
-    const float3 tvec = orig - tri.a; 
-    const float u = dot(tvec, pvec) * invDet; 
-    if (u < 0 || u > 1) return float2(inf, inf); 
- 
-    const float3 qvec = cross(tvec, v0v1); 
-    const float v = dot(dir, qvec) * invDet; 
-    if (v < 0 || u + v > 1) return float2(inf, inf); 
- 
-    const float t = dot(v0v2, qvec) * invDet; 
- 
-    return (t > 0) ? float2(t, t) : float2(inf, inf); 
-} 
 
 FUNC Intersection ClosestIntersection(float3 origin, float3 direction, float min_t, float max_t)
 {
@@ -412,11 +229,6 @@ FUNC Intersection ClosestIntersection(float3 origin, float3 direction, float min
 	return retval;
 }
 
-FUNC float3 ReflectRay(float3 v1, float3 v2)
-{
-	return (v2 * ((2.f * dot(v1, v2))) - v1);
-}
-
 struct OutRef
 {
 	float3 ref_color;
@@ -542,27 +354,12 @@ FUNC float3 TraceRay(float3 origin, float3 direction, float min_t, float max_t, 
 #endif
 }
 
-#ifdef GPU
 float4 main(VS_OUTPUT input) : SV_TARGET
-#else
-FUNC float4 PixelTrace(Input input)
-#endif
 {
-#ifdef GPU
-	if (use_cpu)
-	{
-		float4 color = in_texture.Sample(s0, input.uv);
-		return float4(color);
-	}
-#endif
-
-
 	spheres[0].center = float3(0, 2, 1);
 	spheres[0].color = float3(1, 0, 0);
 	spheres[0].radius = 0.5;
 	spheres[0].intensity = 1;
-	//spheres[0].specular = 0;
-	//spheres[0].metal = 01;
 
 	lights[0].position = float3(0, 0, 3);
 	lights[0].intensity = 0.2;
@@ -571,19 +368,13 @@ FUNC float4 PixelTrace(Input input)
 	lights[1].intensity = 0.8;
 	lights[1].type = 1;
 
-#ifdef GPU
 	const float2 pixel_pos = {(input.pos.x - (canvas_size.x / 2)), (input.pos.y - (canvas_size.y / 2)) * -1};
-#else
-	const float2 pixel_pos = {input.pos.x, input.pos.y};
-#endif
 	
 	const float3 dir = CanvasToViewport(pixel_pos);
 	float3 color = TraceRay(camera_pos, dir, z_near, inf, REFLECTION_RECURSION);
 
 	color = clamp(color * exposure, 0.f, 1.f);
-	color.x = pow(color.x, 1.f / gamma);
-	color.y = pow(color.y, 1.f / gamma);
-	color.z = pow(color.z, 1.f / gamma);
+	color = pow(color, 1.f / gamma);
 
 	return float4(color.x, color.y, color.z, 1.f);
 }
